@@ -2893,7 +2893,6 @@ impl SkillService {
             gemini: false,
             opencode: false,
             hermes: false,
-            openclaw: false,
         };
         for skill in &skills {
             for app in &all_apps {
@@ -2935,7 +2934,6 @@ impl SkillService {
                             gemini: apps.contains(&AppType::Gemini),
                             opencode: apps.contains(&AppType::OpenCode),
                             hermes: apps.contains(&AppType::Hermes),
-                            openclaw: false,
                         };
                         if let Err(e) = db.update_skill_apps(id, &new_apps) {
                             log::warn!("enable_for_apps_with_db: 更新数据库 skill {} 失败: {e}", skill.name);
