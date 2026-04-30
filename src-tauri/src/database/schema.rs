@@ -360,6 +360,35 @@ impl Database {
             [],
         );
 
+        // 技能组定义表
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS skill_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                icon TEXT,
+                is_active BOOLEAN NOT NULL DEFAULT 0,
+                sort_index INTEGER,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // 技能与分组多对多关联表
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS skill_group_members (
+                group_id TEXT NOT NULL,
+                skill_id TEXT NOT NULL,
+                PRIMARY KEY (group_id, skill_id),
+                FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
         Ok(())
     }
 
@@ -443,6 +472,11 @@ impl Database {
                         log::info!("迁移数据库从 v10 到 v11（usage_daily_rollups 保留 request_model 维度）");
                         Self::migrate_v10_to_v11(conn)?;
                         Self::set_user_version(conn, 11)?;
+                    }
+                    11 => {
+                        log::info!("迁移数据库从 v11 到 v12（添加技能分组功能）");
+                        Self::migrate_v11_to_v12(conn)?;
+                        Self::set_user_version(conn, 12)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1213,61 +1247,27 @@ impl Database {
         Ok(())
     }
 
-    /// v10 -> v11：usage_daily_rollups 增加 request_model 维度（进入主键），
-    /// proxy_request_logs 增加 pricing_model 列（写入时的计价基准，回填依据）。
-    ///
-    /// 路由接管下 model（真实上游模型）≠ request_model（客户端别名），
-    /// 旧 rollup 只按 model 聚合，明细 prune 后映射关系永久丢失、计费不可审计。
-    /// SQLite 改主键必须重建表；历史行的 request_model 已不可知，填 ''。
-    fn migrate_v10_to_v11(conn: &Connection) -> Result<(), AppError> {
-        // proxy_request_logs.pricing_model：NULL = v11 前的历史行（回填走
-        // model → 占位符回退 request_model 的旧逻辑），'' = 未计价的错误行
-        if Self::table_exists(conn, "proxy_request_logs")? {
-            Self::add_column_if_missing(conn, "proxy_request_logs", "pricing_model", "TEXT")?;
-        }
-
-        if !Self::table_exists(conn, "usage_daily_rollups")? {
-            log::info!("v10 -> v11：usage_daily_rollups 不存在，跳过重建");
-            return Ok(());
-        }
-
+    fn migrate_v11_to_v12(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch(
-            "ALTER TABLE usage_daily_rollups RENAME TO usage_daily_rollups_v10;
-             CREATE TABLE usage_daily_rollups (
-                 date TEXT NOT NULL,
-                 app_type TEXT NOT NULL,
-                 provider_id TEXT NOT NULL,
-                 model TEXT NOT NULL,
-                 request_model TEXT NOT NULL DEFAULT '',
-                 pricing_model TEXT NOT NULL DEFAULT '',
-                 request_count INTEGER NOT NULL DEFAULT 0,
-                 success_count INTEGER NOT NULL DEFAULT 0,
-                 input_tokens INTEGER NOT NULL DEFAULT 0,
-                 output_tokens INTEGER NOT NULL DEFAULT 0,
-                 cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-                 cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
-                 total_cost_usd TEXT NOT NULL DEFAULT '0',
-                 avg_latency_ms INTEGER NOT NULL DEFAULT 0,
-                 PRIMARY KEY (date, app_type, provider_id, model, request_model, pricing_model)
-             );
-             INSERT INTO usage_daily_rollups
-                 (date, app_type, provider_id, model, request_model, pricing_model,
-                  request_count, success_count, input_tokens, output_tokens,
-                  cache_read_tokens, cache_creation_tokens, total_cost_usd, avg_latency_ms)
-             SELECT date, app_type, provider_id, model, '', '',
-                  request_count, success_count, input_tokens, output_tokens,
-                  cache_read_tokens, cache_creation_tokens, total_cost_usd, avg_latency_ms
-             FROM usage_daily_rollups_v10;
-             DROP TABLE usage_daily_rollups_v10;",
+            "CREATE TABLE IF NOT EXISTS skill_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                icon TEXT,
+                is_active BOOLEAN NOT NULL DEFAULT 0,
+                sort_index INTEGER,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS skill_group_members (
+                group_id TEXT NOT NULL,
+                skill_id TEXT NOT NULL,
+                PRIMARY KEY (group_id, skill_id),
+                FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+            );",
         )
-        .map_err(|e| {
-            AppError::Database(format!("v10 -> v11 重建 usage_daily_rollups 失败: {e}"))
-        })?;
-
-        log::info!(
-            "v10 -> v11 迁移完成：usage_daily_rollups 已保留 request_model/pricing_model 维度"
-        );
-        Ok(())
+        .map_err(|e| AppError::Database(e.to_string()))
     }
 
     /// 插入默认模型定价数据
