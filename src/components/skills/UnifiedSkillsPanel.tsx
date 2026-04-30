@@ -452,7 +452,7 @@ const UnifiedSkillsPanel = React.forwardRef<
       {/* 激活提示条（仅在已安装 tab 显示） */}
       {activeGroup && activeTab === "installed" && (
         <div className="flex items-center gap-2 mb-2 pl-3 pr-2 py-1.5 border-l-2 border-primary text-sm">
-          <span className="text-muted-foreground">分组：</span>
+          <span className="text-muted-foreground">{t("skillGroups.activeLabelPrefix", "分组：")} </span>
           <span className="font-medium text-foreground truncate flex-1">{activeGroup.name}</span>
           <Button
             variant="ghost"
@@ -475,7 +475,7 @@ const UnifiedSkillsPanel = React.forwardRef<
               placeholder={t("skills.search", "搜索技能名称或描述...")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 focus:ring-0 focus:ring-offset-0"
+              className="pl-9 focus:ring-1 focus:ring-primary/30 focus:ring-offset-0"
             />
           </div>
           <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
