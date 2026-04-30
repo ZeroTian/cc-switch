@@ -31,6 +31,7 @@ pub use provider::{ProviderService, ProviderSortUpdate, SwitchResult};
 pub use proxy::ProxyService;
 #[allow(unused_imports)]
 pub use skill::{DiscoverableSkill, Skill, SkillRepo, SkillService};
+#[allow(unused_imports)]
 pub use skill_group::SkillGroupService;
 pub use speedtest::{EndpointLatency, SpeedtestService};
 pub use usage_cache::UsageCache;
