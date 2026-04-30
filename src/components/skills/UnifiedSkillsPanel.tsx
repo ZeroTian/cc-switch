@@ -378,23 +378,29 @@ const UnifiedSkillsPanel = React.forwardRef<
   return (
     <div className="px-6 flex flex-col flex-1 min-h-0 overflow-hidden">
       {/* 标签页切换 */}
-      <div className="flex gap-1 mb-3 border-b pb-2">
-        <Button
-          variant={activeTab === "installed" ? "secondary" : "ghost"}
-          size="sm"
-          className="h-7 text-xs"
+      <div className="flex border-b mb-3">
+        <button
+          type="button"
           onClick={() => setActiveTab("installed")}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            activeTab === "installed"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
         >
           {t("skills.tabInstalled", "已安装")}
-        </Button>
-        <Button
-          variant={activeTab === "groups" ? "secondary" : "ghost"}
-          size="sm"
-          className="h-7 text-xs"
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveTab("groups")}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            activeTab === "groups"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
         >
           {t("skillGroups.title", "分组")}
-        </Button>
+        </button>
       </div>
       {activeTab === "installed" && <div className="flex items-center justify-between">
         <AppCountBar
