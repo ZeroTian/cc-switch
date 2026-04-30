@@ -22,7 +22,7 @@ export const AppToggleGroup: React.FC<AppToggleGroupProps> = ({
     <div className="flex items-center gap-1.5 flex-shrink-0">
       {appIds.map((app) => {
         const { label, icon, activeClass } = APP_ICON_MAP[app];
-        const enabled = apps[app];
+        const enabled = apps[app] ?? false;
         return (
           <Tooltip key={app}>
             <TooltipTrigger asChild>

@@ -110,7 +110,7 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
             </span>
             <TooltipProvider delayDuration={300}>
               <AppToggleGroup
-                apps={apps as unknown as Record<AppId, boolean>}
+                apps={apps}
                 onToggle={handleToggleApp}
                 appIds={SKILLS_APP_IDS}
               />

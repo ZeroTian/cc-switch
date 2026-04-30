@@ -2825,11 +2825,15 @@ impl SkillService {
         for id in ids {
             match db.get_installed_skill(id) {
                 Ok(Some(skill)) => {
+                    let mut skill_failed = false;
                     for app in skill.apps.enabled_apps() {
                         if let Err(e) = Self::sync_to_app_dir(&skill.directory, &app) {
                             log::warn!("enable_skills_by_ids: 同步 skill {} to {:?} 失败: {e}", skill.name, app);
-                            failed.push(skill.name.clone());
+                            skill_failed = true;
                         }
+                    }
+                    if skill_failed {
+                        failed.push(skill.name.clone());
                     }
                 }
                 Ok(None) => log::warn!("enable_skills_by_ids: skill {id} 不存在，跳过"),
@@ -2850,11 +2854,15 @@ impl SkillService {
         for id in ids {
             match db.get_installed_skill(id) {
                 Ok(Some(skill)) => {
+                    let mut skill_failed = false;
                     for app in apps {
                         if let Err(e) = Self::sync_to_app_dir(&skill.directory, app) {
                             log::warn!("enable_skills_by_ids_for_apps: 同步 skill {} to {:?} 失败: {e}", skill.name, app);
-                            failed.push(skill.name.clone());
+                            skill_failed = true;
                         }
+                    }
+                    if skill_failed {
+                        failed.push(skill.name.clone());
                     }
                 }
                 Ok(None) => log::warn!("enable_skills_by_ids_for_apps: skill {id} 不存在，跳过"),
