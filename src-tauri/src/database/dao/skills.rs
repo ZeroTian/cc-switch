@@ -295,7 +295,6 @@ impl Database {
                         gemini: row.get(3)?,
                         opencode: row.get(4)?,
                         hermes: row.get(5)?,
-                        openclaw: false,
                     },
                 ))
             })
