@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Plus, Edit2, Trash2, Play, Square, Loader2 } from "lucide-react";
+import { Plus, Edit2, Trash2, Play, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppToggleGroup } from "@/components/common/AppToggleGroup";
@@ -94,6 +94,7 @@ export function SkillGroupsPanel() {
           {t("skillGroups.description", "将 Skill 按场景分组，一键切换当前激活集合")}
         </p>
         <Button
+          variant="outline"
           size="sm"
           onClick={() => setEditDialogState({ open: true, group: null })}
         >
@@ -120,10 +121,12 @@ export function SkillGroupsPanel() {
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  {group.isActive && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-                  )}
                   <span className="font-medium text-sm">{group.name}</span>
+                  {group.isActive && (
+                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-primary text-primary-foreground shrink-0">
+                      激活中
+                    </span>
+                  )}
                 </div>
                 {group.description && (
                   <p className="text-xs text-muted-foreground mt-0.5 truncate">
@@ -138,17 +141,16 @@ export function SkillGroupsPanel() {
               />
               <div className="flex items-center gap-1 shrink-0">
                 <Button
-                  variant={group.isActive ? "secondary" : "outline"}
+                  variant="outline"
                   size="sm"
                   className="h-7 text-xs"
                   onClick={() => handleActivate(group)}
                   disabled={activateMutation.isPending || deactivateMutation.isPending}
                 >
-                  {group.isActive ? (
-                    <><Square className="h-3 w-3 mr-1" />{t("skillGroups.deactivate", "停用")}</>
-                  ) : (
-                    <><Play className="h-3 w-3 mr-1" />{t("skillGroups.activate", "激活")}</>
-                  )}
+                  {group.isActive
+                    ? t("skillGroups.deactivate", "停用")
+                    : <><Play className="h-3 w-3 mr-1" />{t("skillGroups.activate", "激活")}</>
+                  }
                 </Button>
                 <Button
                   variant="ghost"
