@@ -352,6 +352,35 @@ impl Database {
             [],
         );
 
+        // 技能组定义表
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS skill_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                icon TEXT,
+                is_active BOOLEAN NOT NULL DEFAULT 0,
+                sort_index INTEGER,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // 技能与分组多对多关联表
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS skill_group_members (
+                group_id TEXT NOT NULL,
+                skill_id TEXT NOT NULL,
+                PRIMARY KEY (group_id, skill_id),
+                FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
         Ok(())
     }
 
@@ -430,6 +459,11 @@ impl Database {
                         log::info!("迁移数据库从 v9 到 v10（添加 Hermes Agent 支持）");
                         Self::migrate_v9_to_v10(conn)?;
                         Self::set_user_version(conn, 10)?;
+                    }
+                    10 => {
+                        log::info!("迁移数据库从 v10 到 v11（添加技能分组功能）");
+                        Self::migrate_v10_to_v11(conn)?;
+                        Self::set_user_version(conn, 11)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1198,6 +1232,29 @@ impl Database {
 
         log::info!("v9 -> v10 迁移完成：已添加 Hermes Agent 支持");
         Ok(())
+    }
+
+    fn migrate_v10_to_v11(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS skill_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                icon TEXT,
+                is_active BOOLEAN NOT NULL DEFAULT 0,
+                sort_index INTEGER,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS skill_group_members (
+                group_id TEXT NOT NULL,
+                skill_id TEXT NOT NULL,
+                PRIMARY KEY (group_id, skill_id),
+                FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+            );",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))
     }
 
     /// 插入默认模型定价数据
