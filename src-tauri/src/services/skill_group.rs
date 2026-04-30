@@ -91,17 +91,23 @@ impl SkillGroupService {
     }
 
     pub fn deactivate_all(db: &Arc<Database>) -> Result<()> {
-        // 从快照恢复所有 skill 的 enabled_* 状态（同时更新数据库）
+        // 从快照恢复所有 skill 的 enabled_* 状态（同时更新数据库、清空快照）
         let snapshot = db.restore_skill_group_snapshot()?;
+
+        if snapshot.is_empty() {
+            // 没有快照说明从未激活过分组，仅清除标记，不操作文件系统
+            db.clear_all_skill_group_active()?;
+            return Ok(());
+        }
 
         // 先清空所有文件系统链接
         SkillService::disable_all_skills(db)?;
 
-        // 按恢复后的状态重新同步文件系统
+        // 按恢复后的状态重新同步文件系统（db.get_installed_skill 只查一次）
         for (id, apps) in &snapshot {
-            for app in apps.enabled_apps() {
-                if let Ok(Some(skill)) = db.get_installed_skill(id) {
-                    if let Err(e) = SkillService::sync_to_app_dir_pub(&skill.directory, &app) {
+            if let Ok(Some(skill)) = db.get_installed_skill(id) {
+                for app in apps.enabled_apps() {
+                    if let Err(e) = SkillService::sync_to_app_dir(&skill.directory, &app) {
                         log::warn!("deactivate: 恢复 skill {} to {:?} 失败: {e}", skill.name, app);
                     }
                 }
