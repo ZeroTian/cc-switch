@@ -616,9 +616,9 @@ const InstalledSkillListItem: React.FC<InstalledSkillListItemProps> = ({
         )}
         {groupNames.length > 0 && (
           <div className="flex gap-1 mt-0.5 flex-wrap">
-            {groupNames.map((name) => (
+            {groupNames.map((name, i) => (
               <Badge
-                key={name}
+                key={i}
                 variant="secondary"
                 className="text-[10px] py-0 px-1.5 h-4"
               >
