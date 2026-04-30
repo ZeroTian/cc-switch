@@ -65,7 +65,7 @@ impl SkillGroupService {
 
     pub fn deactivate_all(db: &Arc<Database>) -> Result<()> {
         SkillService::disable_all_skills(db)?;
-        db.set_skill_group_active("", false)?;
+        db.clear_all_skill_group_active()?;
         Ok(())
     }
 }
