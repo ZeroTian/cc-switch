@@ -1163,6 +1163,17 @@ pub fn run() {
             commands::update_skill,
             commands::migrate_skill_storage,
             commands::search_skills_sh,
+            // Skill group management
+            commands::get_skill_groups,
+            commands::create_skill_group,
+            commands::update_skill_group,
+            commands::delete_skill_group,
+            commands::activate_skill_group,
+            commands::deactivate_all_skill_groups,
+            commands::add_skill_to_group,
+            commands::remove_skill_from_group,
+            commands::get_group_member_ids,
+            commands::get_skill_group_names,
             // Skill management (legacy API compatibility)
             commands::get_skills,
             commands::get_skills_for_app,
