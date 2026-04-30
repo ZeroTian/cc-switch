@@ -118,6 +118,13 @@ impl Database {
         tx.commit().map_err(|e| AppError::Database(e.to_string()))
     }
 
+    pub fn clear_all_skill_group_active(&self) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        conn.execute("UPDATE skill_groups SET is_active = 0", [])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub fn add_skill_to_group(&self, group_id: &str, skill_id: &str) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
         conn.execute(

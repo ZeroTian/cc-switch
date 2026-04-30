@@ -2722,9 +2722,17 @@ impl SkillService {
     /// 将所有已安装 skill 从各 app 目录移除（文件系统），数据库 enabled_* 保持不变
     pub fn disable_all_skills(db: &Arc<Database>) -> Result<()> {
         let skills = Self::get_all_installed(db)?;
+        // 遍历所有支持 Skill 的 app（OpenClaw 不支持）
+        let skill_apps = [
+            AppType::Claude,
+            AppType::Codex,
+            AppType::Gemini,
+            AppType::OpenCode,
+            AppType::Hermes,
+        ];
         for skill in &skills {
-            for app in skill.apps.enabled_apps() {
-                if let Err(e) = Self::remove_from_app(&skill.directory, &app) {
+            for app in &skill_apps {
+                if let Err(e) = Self::remove_from_app(&skill.directory, app) {
                     log::warn!("disable_all: 移除 skill {} from {:?} 失败: {e}", skill.name, app);
                 }
             }
