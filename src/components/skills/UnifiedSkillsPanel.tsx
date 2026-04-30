@@ -118,6 +118,18 @@ const UnifiedSkillsPanel = React.forwardRef<
     return map;
   }, [skillUpdates]);
 
+  // skillId → 所属分组名列表
+  const skillGroupNamesMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const group of groups) {
+      for (const skillId of group.memberIds) {
+        if (!map[skillId]) map[skillId] = [];
+        map[skillId].push(group.name);
+      }
+    }
+    return map;
+  }, [groups]);
+
   const enabledCounts = useMemo(() => {
     const counts = {
       claude: 0,
@@ -472,6 +484,7 @@ const UnifiedSkillsPanel = React.forwardRef<
                       updateSkillMutation.isPending &&
                       updateSkillMutation.variables === skill.id
                     }
+                    groupNames={skillGroupNamesMap[skill.id] ?? []}
                     onToggleApp={handleToggleApp}
                     onUninstall={() => handleUninstall(skill)}
                     onUpdate={() => handleUpdateSkill(skill)}
@@ -530,6 +543,7 @@ interface InstalledSkillListItemProps {
   skill: InstalledSkill;
   hasUpdate?: boolean;
   isUpdating?: boolean;
+  groupNames?: string[];
   onToggleApp: (id: string, app: AppId, enabled: boolean) => void;
   onUninstall: () => void;
   onUpdate?: () => void;
@@ -540,6 +554,7 @@ const InstalledSkillListItem: React.FC<InstalledSkillListItemProps> = ({
   skill,
   hasUpdate,
   isUpdating,
+  groupNames = [],
   onToggleApp,
   onUninstall,
   onUpdate,
@@ -598,6 +613,19 @@ const InstalledSkillListItem: React.FC<InstalledSkillListItemProps> = ({
           >
             {skill.description}
           </p>
+        )}
+        {groupNames.length > 0 && (
+          <div className="flex gap-1 mt-0.5 flex-wrap">
+            {groupNames.map((name) => (
+              <Badge
+                key={name}
+                variant="secondary"
+                className="text-[10px] py-0 px-1.5 h-4"
+              >
+                {name}
+              </Badge>
+            ))}
+          </div>
         )}
       </div>
 

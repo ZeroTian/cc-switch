@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { Loader2, Search } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppToggleGroup } from "@/components/common/AppToggleGroup";
@@ -92,7 +91,7 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
           </DialogTitle>
         </DialogHeader>
 
-        <div className="px-6 py-4 space-y-3">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 min-h-0">
           <Input
             placeholder={t("skillGroups.namePlaceholder", "分组名称")}
             value={name}
@@ -116,10 +115,9 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
               />
             </TooltipProvider>
           </div>
-        </div>
 
-        {group && (
-          <div className="px-6 pb-2 space-y-2">
+          {group && (
+          <div className="space-y-2">
             <div className="text-sm font-medium">
               {t("skillGroups.selectSkills", "选择 Skill")}
             </div>
@@ -132,7 +130,7 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
                 className="pl-8"
               />
             </div>
-            <div className="max-h-52 overflow-y-auto space-y-1 border rounded-md p-2">
+            <div className="space-y-1 border rounded-md p-2">
               {filtered.length === 0 ? (
                 <div className="text-sm text-muted-foreground py-2 text-center">
                   {t("skillGroups.noSkills", "没有已安装的 Skill")}
@@ -140,9 +138,6 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
               ) : (
                 filtered.map((skill) => {
                   const checked = memberIds.includes(skill.id);
-                  const enabledApps = Object.entries(skill.apps)
-                    .filter(([k, v]) => v && k !== "openclaw")
-                    .map(([k]) => k);
                   return (
                     <label
                       key={skill.id}
@@ -161,13 +156,6 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
                             {skill.description}
                           </div>
                         )}
-                        <div className="flex gap-1 mt-0.5 flex-wrap">
-                          {enabledApps.map((app) => (
-                            <Badge key={app} variant="secondary" className="text-[10px] py-0 px-1">
-                              {app}
-                            </Badge>
-                          ))}
-                        </div>
                       </div>
                     </label>
                   );
@@ -175,7 +163,8 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
               )}
             </div>
           </div>
-        )}
+          )}
+        </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>

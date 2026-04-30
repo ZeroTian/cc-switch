@@ -299,4 +299,5 @@ export interface SkillGroup {
   createdAt: number;
   updatedAt: number;
   apps: SkillGroupApps;
+  memberIds: string[];
 }
