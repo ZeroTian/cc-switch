@@ -181,6 +181,8 @@ export function useToggleSkillApp() {
     }) => skillsApi.toggleApp(id, app, enabled),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["skills", "installed"] });
+      // 手动修改即退出分组模式，刷新分组状态使激活提示条消失
+      queryClient.invalidateQueries({ queryKey: ["skillGroups"] });
     },
   });
 }

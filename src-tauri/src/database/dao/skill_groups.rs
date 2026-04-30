@@ -27,6 +27,9 @@ pub struct SkillGroup {
     pub created_at: i64,
     pub updated_at: i64,
     pub apps: SkillGroupApps,
+    /// 该分组的成员 skill_id 列表（仅在 get_all_skill_groups 时填充）
+    #[serde(default)]
+    pub member_ids: Vec<String>,
 }
 
 impl Database {
@@ -47,6 +50,7 @@ impl Database {
                 opencode: row.get(11)?,
                 hermes: row.get(12)?,
             },
+            member_ids: vec![],
         })
     }
 
@@ -59,11 +63,30 @@ impl Database {
                  FROM skill_groups ORDER BY COALESCE(sort_index, 9999), name ASC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
-        let rows = stmt
+        let mut groups: Vec<SkillGroup> = stmt
             .query_map([], |row| Self::row_to_group(row))
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .map(|r| r.map_err(|e| AppError::Database(e.to_string())))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // 批量填充成员 id（单次 JOIN 查询）
+        let mut member_stmt = conn
+            .prepare("SELECT group_id, skill_id FROM skill_group_members ORDER BY group_id")
             .map_err(|e| AppError::Database(e.to_string()))?;
-        rows.map(|r| r.map_err(|e| AppError::Database(e.to_string())))
-            .collect()
+        let pairs: Vec<(String, String)> = member_stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .filter_map(|r| r.ok())
+            .collect();
+        for group in &mut groups {
+            group.member_ids = pairs
+                .iter()
+                .filter(|(gid, _)| gid == &group.id)
+                .map(|(_, sid)| sid.clone())
+                .collect();
+        }
+
+        Ok(groups)
     }
 
     pub fn get_skill_group(&self, id: &str) -> Result<Option<SkillGroup>, AppError> {
