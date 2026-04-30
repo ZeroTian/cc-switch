@@ -2794,11 +2794,6 @@ impl SkillService {
         Ok(failed)
     }
 
-    /// 公开的文件系统同步方法（供 SkillGroupService 调用）
-    pub fn sync_to_app_dir_pub(directory: &str, app: &AppType) -> Result<()> {
-        Self::sync_to_app_dir(directory, app)
-    }
-
     /// 禁用所有 skill：文件系统移除 + 数据库 enabled_* 全置 false
     pub fn disable_all_skills_with_db(db: &Arc<Database>) -> Result<()> {
         let skills = Self::get_all_installed(db)?;

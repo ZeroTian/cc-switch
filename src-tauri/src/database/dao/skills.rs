@@ -263,44 +263,48 @@ impl Database {
 
     // ========== 技能分组快照 ==========
 
-    /// 保存当前所有 skill 的 enabled_* 状态到快照（覆盖旧快照）
+    /// 保存当前所有 skill 的 enabled_* 状态到快照（覆盖旧快照，事务保护防止数据丢失）
     pub fn save_skill_group_snapshot(&self) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
-        conn.execute("DELETE FROM skill_group_snapshot", [])
-            .map_err(|e| AppError::Database(e.to_string()))?;
         conn.execute_batch(
-            "INSERT INTO skill_group_snapshot (skill_id, enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes)
-             SELECT id, enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes FROM skills",
+            "BEGIN;
+             DELETE FROM skill_group_snapshot;
+             INSERT INTO skill_group_snapshot (skill_id, enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes)
+             SELECT id, enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes FROM skills;
+             COMMIT;",
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
     }
 
-    /// 从快照恢复所有 skill 的 enabled_* 状态
+    /// 从快照恢复所有 skill 的 enabled_* 状态，清空快照，返回恢复的记录
     pub fn restore_skill_group_snapshot(&self) -> Result<Vec<(String, SkillApps)>, AppError> {
         let conn = lock_conn!(self.conn);
-        let mut stmt = conn
-            .prepare(
-                "SELECT skill_id, enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes
-                 FROM skill_group_snapshot",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        let rows: Vec<(String, SkillApps)> = stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    SkillApps {
-                        claude: row.get(1)?,
-                        codex: row.get(2)?,
-                        gemini: row.get(3)?,
-                        opencode: row.get(4)?,
-                        hermes: row.get(5)?,
-                    },
-                ))
-            })
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .map(|r| r.map_err(|e| AppError::Database(e.to_string())))
-            .collect::<Result<Vec<_>, _>>()?;
+
+        // 用独立 block 确保 stmt 在批量 UPDATE 前释放借用
+        let rows: Vec<(String, SkillApps)> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT skill_id, enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes
+                     FROM skill_group_snapshot",
+                )
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            stmt.query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        SkillApps {
+                            claude: row.get(1)?,
+                            codex: row.get(2)?,
+                            gemini: row.get(3)?,
+                            opencode: row.get(4)?,
+                            hermes: row.get(5)?,
+                        },
+                    ))
+                })
+                .map_err(|e| AppError::Database(e.to_string()))?
+                .map(|r| r.map_err(|e| AppError::Database(e.to_string())))
+                .collect::<Result<Vec<_>, _>>()?
+        }; // stmt 在此处 drop，释放对 conn 的借用
 
         // 批量更新数据库
         for (id, apps) in &rows {
