@@ -56,10 +56,23 @@ impl SkillGroupService {
 
         let member_ids = db.get_group_member_ids(group_id)?;
 
+        // 先禁用所有 skill 的文件系统链接
         SkillService::disable_all_skills(db)?;
-        SkillService::enable_skills_by_ids(db, &member_ids)?;
 
+        // 启用本组成员，收集失败列表（best-effort，不因单个失败中断）
+        let sync_errors = SkillService::enable_skills_by_ids(db, &member_ids)?;
+
+        // 无论同步是否有部分失败，都更新 is_active（数据库状态与意图一致）
         db.set_skill_group_active(group_id, true)?;
+
+        // 有部分失败时返回警告信息，让调用层决定是否展示给用户
+        if !sync_errors.is_empty() {
+            return Err(anyhow!(
+                "分组已激活，但以下 Skill 同步失败（可手动重新启用）：{}",
+                sync_errors.join("、")
+            ));
+        }
+
         Ok(())
     }
 

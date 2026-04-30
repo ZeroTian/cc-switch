@@ -372,7 +372,7 @@ const UnifiedSkillsPanel = React.forwardRef<
           {t("skillGroups.title", "分组")}
         </Button>
       </div>
-      <div className="flex items-center justify-between">
+      {activeTab === "installed" && <div className="flex items-center justify-between">
         <AppCountBar
           totalLabel={t("skills.installed", { count: skills?.length || 0 })}
           counts={enabledCounts}
@@ -423,7 +423,7 @@ const UnifiedSkillsPanel = React.forwardRef<
               : t("skills.checkUpdates")}
           </Button>
         </div>
-      </div>
+      </div>}
 
       {/* 激活提示条 */}
       {activeGroup && (

@@ -43,7 +43,4 @@ export const skillGroupsApi = {
 
   getMemberIds: (groupId: string): Promise<string[]> =>
     invoke("get_group_member_ids", { groupId }),
-
-  getSkillGroupNames: (skillId: string): Promise<string[]> =>
-    invoke("get_skill_group_names", { skillId }),
 };

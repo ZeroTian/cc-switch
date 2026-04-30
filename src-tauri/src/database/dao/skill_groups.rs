@@ -157,19 +157,4 @@ impl Database {
             .collect()
     }
 
-    pub fn get_skill_group_names(&self, skill_id: &str) -> Result<Vec<String>, AppError> {
-        let conn = lock_conn!(self.conn);
-        let mut stmt = conn
-            .prepare(
-                "SELECT sg.name FROM skill_groups sg
-                 JOIN skill_group_members sgm ON sg.id = sgm.group_id
-                 WHERE sgm.skill_id = ?1 ORDER BY sg.name ASC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        let rows = stmt
-            .query_map([skill_id], |row| row.get::<_, String>(0))
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        rows.map(|r| r.map_err(|e| AppError::Database(e.to_string())))
-            .collect()
-    }
 }
