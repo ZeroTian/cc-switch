@@ -76,8 +76,8 @@ impl Database {
         let pairs: Vec<(String, String)> = member_stmt
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(|e| AppError::Database(e.to_string()))?
-            .filter_map(|r| r.ok())
-            .collect();
+            .map(|r| r.map_err(|e| AppError::Database(e.to_string())))
+            .collect::<Result<Vec<_>, _>>()?;
         for group in &mut groups {
             group.member_ids = pairs
                 .iter()

@@ -72,8 +72,8 @@ export function useAddSkillToGroup() {
     mutationFn: ({ groupId, skillId }: { groupId: string; skillId: string }) =>
       skillGroupsApi.addSkill(groupId, skillId),
     onSuccess: (_data, { groupId }) => {
+      qc.invalidateQueries({ queryKey: ["skillGroups"] });
       qc.invalidateQueries({ queryKey: ["skillGroups", "members", groupId] });
-      qc.invalidateQueries({ queryKey: ["skillGroups", "names"] });
     },
   });
 }
@@ -84,8 +84,8 @@ export function useRemoveSkillFromGroup() {
     mutationFn: ({ groupId, skillId }: { groupId: string; skillId: string }) =>
       skillGroupsApi.removeSkill(groupId, skillId),
     onSuccess: (_data, { groupId }) => {
+      qc.invalidateQueries({ queryKey: ["skillGroups"] });
       qc.invalidateQueries({ queryKey: ["skillGroups", "members", groupId] });
-      qc.invalidateQueries({ queryKey: ["skillGroups", "names"] });
     },
   });
 }
