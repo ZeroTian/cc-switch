@@ -13,6 +13,7 @@ pub mod session_usage;
 pub mod session_usage_codex;
 pub mod session_usage_gemini;
 pub mod skill;
+pub mod skill_group;
 pub mod speedtest;
 pub mod stream_check;
 pub mod subscription;
@@ -30,6 +31,7 @@ pub use provider::{ProviderService, ProviderSortUpdate, SwitchResult};
 pub use proxy::ProxyService;
 #[allow(unused_imports)]
 pub use skill::{DiscoverableSkill, Skill, SkillRepo, SkillService};
+pub use skill_group::SkillGroupService;
 pub use speedtest::{EndpointLatency, SpeedtestService};
 pub use usage_cache::UsageCache;
 #[allow(unused_imports)]
