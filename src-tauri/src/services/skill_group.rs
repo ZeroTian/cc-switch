@@ -29,6 +29,7 @@ impl SkillGroupService {
             created_at: now,
             updated_at: now,
             apps,
+            member_ids: vec![],
         };
         db.create_skill_group(&group)?;
         Ok(group)
