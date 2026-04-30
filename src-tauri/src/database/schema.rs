@@ -370,7 +370,12 @@ impl Database {
                 is_active BOOLEAN NOT NULL DEFAULT 0,
                 sort_index INTEGER,
                 created_at INTEGER NOT NULL DEFAULT 0,
-                updated_at INTEGER NOT NULL DEFAULT 0
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                enabled_claude BOOLEAN NOT NULL DEFAULT 1,
+                enabled_codex BOOLEAN NOT NULL DEFAULT 0,
+                enabled_gemini BOOLEAN NOT NULL DEFAULT 0,
+                enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
+                enabled_hermes BOOLEAN NOT NULL DEFAULT 0
             )",
             [],
         )
@@ -474,7 +479,7 @@ impl Database {
                         Self::set_user_version(conn, 11)?;
                     }
                     11 => {
-                        log::info!("迁移数据库从 v11 到 v12（添加技能分组功能）");
+                        log::info!("迁移数据库从 v11 到 v12（技能分组添加 app 开关）");
                         Self::migrate_v11_to_v12(conn)?;
                         Self::set_user_version(conn, 12)?;
                     }
@@ -1266,6 +1271,17 @@ impl Database {
                 FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE,
                 FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
             );",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))
+    }
+
+    fn migrate_v11_to_v12(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(
+            "ALTER TABLE skill_groups ADD COLUMN enabled_claude BOOLEAN NOT NULL DEFAULT 1;
+             ALTER TABLE skill_groups ADD COLUMN enabled_codex BOOLEAN NOT NULL DEFAULT 0;
+             ALTER TABLE skill_groups ADD COLUMN enabled_gemini BOOLEAN NOT NULL DEFAULT 0;
+             ALTER TABLE skill_groups ADD COLUMN enabled_opencode BOOLEAN NOT NULL DEFAULT 0;
+             ALTER TABLE skill_groups ADD COLUMN enabled_hermes BOOLEAN NOT NULL DEFAULT 0;",
         )
         .map_err(|e| AppError::Database(e.to_string()))
     }

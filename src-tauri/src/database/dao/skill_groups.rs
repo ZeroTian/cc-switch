@@ -7,6 +7,16 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SkillGroupApps {
+    pub claude: bool,
+    pub codex: bool,
+    pub gemini: bool,
+    pub opencode: bool,
+    pub hermes: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SkillGroup {
     pub id: String,
     pub name: String,
@@ -16,30 +26,41 @@ pub struct SkillGroup {
     pub sort_index: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
+    pub apps: SkillGroupApps,
 }
 
 impl Database {
+    fn row_to_group(row: &rusqlite::Row<'_>) -> rusqlite::Result<SkillGroup> {
+        Ok(SkillGroup {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            icon: row.get(3)?,
+            is_active: row.get(4)?,
+            sort_index: row.get(5)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
+            apps: SkillGroupApps {
+                claude: row.get(8)?,
+                codex: row.get(9)?,
+                gemini: row.get(10)?,
+                opencode: row.get(11)?,
+                hermes: row.get(12)?,
+            },
+        })
+    }
+
     pub fn get_all_skill_groups(&self) -> Result<Vec<SkillGroup>, AppError> {
         let conn = lock_conn!(self.conn);
         let mut stmt = conn
             .prepare(
-                "SELECT id, name, description, icon, is_active, sort_index, created_at, updated_at
+                "SELECT id, name, description, icon, is_active, sort_index, created_at, updated_at,
+                        enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes
                  FROM skill_groups ORDER BY COALESCE(sort_index, 9999), name ASC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
         let rows = stmt
-            .query_map([], |row| {
-                Ok(SkillGroup {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    description: row.get(2)?,
-                    icon: row.get(3)?,
-                    is_active: row.get(4)?,
-                    sort_index: row.get(5)?,
-                    created_at: row.get(6)?,
-                    updated_at: row.get(7)?,
-                })
-            })
+            .query_map([], |row| Self::row_to_group(row))
             .map_err(|e| AppError::Database(e.to_string()))?;
         rows.map(|r| r.map_err(|e| AppError::Database(e.to_string())))
             .collect()
@@ -49,22 +70,12 @@ impl Database {
         let conn = lock_conn!(self.conn);
         let mut stmt = conn
             .prepare(
-                "SELECT id, name, description, icon, is_active, sort_index, created_at, updated_at
+                "SELECT id, name, description, icon, is_active, sort_index, created_at, updated_at,
+                        enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes
                  FROM skill_groups WHERE id = ?1",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
-        match stmt.query_row([id], |row| {
-            Ok(SkillGroup {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                description: row.get(2)?,
-                icon: row.get(3)?,
-                is_active: row.get(4)?,
-                sort_index: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
-            })
-        }) {
+        match stmt.query_row([id], |row| Self::row_to_group(row)) {
             Ok(g) => Ok(Some(g)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(AppError::Database(e.to_string())),
@@ -74,11 +85,13 @@ impl Database {
     pub fn create_skill_group(&self, group: &SkillGroup) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
         conn.execute(
-            "INSERT INTO skill_groups (id, name, description, icon, is_active, sort_index, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO skill_groups (id, name, description, icon, is_active, sort_index, created_at, updated_at,
+                                       enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 group.id, group.name, group.description, group.icon,
                 group.is_active, group.sort_index, group.created_at, group.updated_at,
+                group.apps.claude, group.apps.codex, group.apps.gemini, group.apps.opencode, group.apps.hermes,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -88,9 +101,15 @@ impl Database {
     pub fn update_skill_group(&self, group: &SkillGroup) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
         conn.execute(
-            "UPDATE skill_groups SET name=?2, description=?3, icon=?4, sort_index=?5, updated_at=?6
-             WHERE id=?1",
-            params![group.id, group.name, group.description, group.icon, group.sort_index, group.updated_at],
+            "UPDATE skill_groups SET name=?1, description=?2, icon=?3, sort_index=?4, updated_at=?5,
+                                     enabled_claude=?6, enabled_codex=?7, enabled_gemini=?8,
+                                     enabled_opencode=?9, enabled_hermes=?10
+             WHERE id=?11",
+            params![
+                group.name, group.description, group.icon, group.sort_index, group.updated_at,
+                group.apps.claude, group.apps.codex, group.apps.gemini, group.apps.opencode, group.apps.hermes,
+                group.id,
+            ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())

@@ -13,19 +13,24 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Search } from "lucide-react";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { AppToggleGroup } from "@/components/common/AppToggleGroup";
+import { SKILLS_APP_IDS } from "@/config/appConfig";
 import { useInstalledSkills } from "@/hooks/useSkills";
 import {
   useGroupMemberIds,
   useAddSkillToGroup,
   useRemoveSkillFromGroup,
 } from "@/hooks/useSkillGroups";
-import type { SkillGroup } from "@/lib/api/skills";
+import type { AppId } from "@/lib/api/types";
+import type { SkillGroup, SkillGroupApps } from "@/lib/api/skills";
+import { DEFAULT_GROUP_APPS } from "@/lib/api/skillGroups";
 
 interface Props {
   open: boolean;
   group: SkillGroup | null;
   onClose: () => void;
-  onSave: (params: { name: string; description?: string; icon?: string }) => void;
+  onSave: (params: { name: string; description?: string; apps: SkillGroupApps }) => void;
   saving?: boolean;
 }
 
@@ -33,14 +38,14 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
   const { t } = useTranslation();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [icon, setIcon] = useState("");
+  const [apps, setApps] = useState<SkillGroupApps>(DEFAULT_GROUP_APPS);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (open) {
       setName(group?.name ?? "");
       setDescription(group?.description ?? "");
-      setIcon(group?.icon ?? "");
+      setApps(group?.apps ?? DEFAULT_GROUP_APPS);
       setSearch("");
     }
   }, [open, group]);
@@ -65,49 +70,56 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
     }
   };
 
+  const handleToggleApp = (app: AppId, enabled: boolean) => {
+    setApps((prev) => ({ ...prev, [app]: enabled }));
+  };
+
   const handleSave = () => {
     if (!name.trim()) return;
     onSave({
       name: name.trim(),
       description: description.trim() || undefined,
-      icon: icon.trim() || undefined,
+      apps,
     });
   };
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg" zIndex="top">
         <DialogHeader>
           <DialogTitle>
             {group ? t("skillGroups.edit", "编辑分组") : t("skillGroups.create", "新建分组")}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <Input
-              placeholder="图标 emoji，如 ✍️"
-              value={icon}
-              onChange={(e) => setIcon(e.target.value)}
-              className="w-24"
-            />
-            <Input
-              placeholder={t("skillGroups.namePlaceholder", "分组名称")}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="flex-1"
-            />
-          </div>
+        <div className="px-6 py-4 space-y-3">
+          <Input
+            placeholder={t("skillGroups.namePlaceholder", "分组名称")}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
           <Textarea
             placeholder={t("skillGroups.descriptionPlaceholder", "描述（可选）")}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={2}
           />
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              {t("skillGroups.appsLabel", "适用 Agent")}
+            </span>
+            <TooltipProvider delayDuration={300}>
+              <AppToggleGroup
+                apps={apps as unknown as Record<AppId, boolean>}
+                onToggle={handleToggleApp}
+                appIds={SKILLS_APP_IDS}
+              />
+            </TooltipProvider>
+          </div>
         </div>
 
         {group && (
-          <div className="mt-4 space-y-2">
+          <div className="px-6 pb-2 space-y-2">
             <div className="text-sm font-medium">
               {t("skillGroups.selectSkills", "选择 Skill")}
             </div>
@@ -128,7 +140,7 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
               ) : (
                 filtered.map((skill) => {
                   const checked = memberIds.includes(skill.id);
-                  const apps = Object.entries(skill.apps)
+                  const enabledApps = Object.entries(skill.apps)
                     .filter(([k, v]) => v && k !== "openclaw")
                     .map(([k]) => k);
                   return (
@@ -150,7 +162,7 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
                           </div>
                         )}
                         <div className="flex gap-1 mt-0.5 flex-wrap">
-                          {apps.map((app) => (
+                          {enabledApps.map((app) => (
                             <Badge key={app} variant="secondary" className="text-[10px] py-0 px-1">
                               {app}
                             </Badge>
