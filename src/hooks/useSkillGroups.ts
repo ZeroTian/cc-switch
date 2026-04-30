@@ -15,16 +15,10 @@ export function useGroupMemberIds(groupId: string | null) {
     queryKey: ["skillGroups", "members", groupId],
     queryFn: () => skillGroupsApi.getMemberIds(groupId!),
     enabled: !!groupId,
-  });
-}
-
-export function useSkillGroupNames(skillId: string) {
-  return useQuery({
-    queryKey: ["skillGroups", "names", skillId],
-    queryFn: () => skillGroupsApi.getSkillGroupNames(skillId),
     staleTime: Infinity,
   });
 }
+
 
 export function useCreateSkillGroup() {
   const qc = useQueryClient();
