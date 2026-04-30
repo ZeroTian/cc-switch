@@ -2732,6 +2732,37 @@ impl SkillService {
 
     // ========== skills.sh 搜索 ==========
 
+    /// 将所有已安装 skill 从各 app 目录移除（文件系统），数据库 enabled_* 保持不变
+    pub fn disable_all_skills(db: &Arc<Database>) -> Result<()> {
+        let skills = Self::get_all_installed(db)?;
+        for skill in &skills {
+            for app in skill.apps.enabled_apps() {
+                if let Err(e) = Self::remove_from_app(&skill.directory, &app) {
+                    log::warn!("disable_all: 移除 skill {} from {:?} 失败: {e}", skill.name, app);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// 按 skill_ids 列表，将对应 skill 按其 per-app 开关重新同步到文件系统
+    pub fn enable_skills_by_ids(db: &Arc<Database>, ids: &[String]) -> Result<()> {
+        for id in ids {
+            match db.get_installed_skill(id) {
+                Ok(Some(skill)) => {
+                    for app in skill.apps.enabled_apps() {
+                        if let Err(e) = Self::sync_to_app_dir(&skill.directory, &app) {
+                            log::warn!("enable_skills_by_ids: 同步 skill {} to {:?} 失败: {e}", skill.name, app);
+                        }
+                    }
+                }
+                Ok(None) => log::warn!("enable_skills_by_ids: skill {id} 不存在，跳过"),
+                Err(e) => log::warn!("enable_skills_by_ids: 读取 skill {id} 失败: {e}"),
+            }
+        }
+        Ok(())
+    }
+
     /// 搜索 skills.sh 公共目录
     pub async fn search_skills_sh(
         query: &str,
