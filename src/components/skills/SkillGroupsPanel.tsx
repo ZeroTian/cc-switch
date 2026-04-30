@@ -17,7 +17,6 @@ import {
   useActivateSkillGroup,
   useDeactivateAllSkillGroups,
 } from "@/hooks/useSkillGroups";
-import type { AppId } from "@/lib/api/types";
 import type { SkillGroup, SkillGroupApps } from "@/lib/api/skills";
 
 export function SkillGroupsPanel() {
@@ -109,6 +108,7 @@ export function SkillGroupsPanel() {
           {t("skillGroups.empty", "还没有分组，点击「新建分组」开始")}
         </div>
       ) : (
+        <TooltipProvider delayDuration={300}>
         <div className="space-y-2">
           {groups.map((group) => (
             <div
@@ -132,13 +132,11 @@ export function SkillGroupsPanel() {
                   </p>
                 )}
               </div>
-              <TooltipProvider delayDuration={300}>
-                <AppToggleGroup
-                  apps={group.apps as unknown as Record<AppId, boolean>}
-                  onToggle={() => {}}
-                  appIds={SKILLS_APP_IDS}
-                />
-              </TooltipProvider>
+              <AppToggleGroup
+                apps={group.apps}
+                onToggle={() => {}}
+                appIds={SKILLS_APP_IDS}
+              />
               <div className="flex items-center gap-1 shrink-0">
                 <Button
                   variant={group.isActive ? "secondary" : "outline"}
@@ -173,6 +171,7 @@ export function SkillGroupsPanel() {
             </div>
           ))}
         </div>
+        </TooltipProvider>
       )}
 
       <SkillGroupEditDialog

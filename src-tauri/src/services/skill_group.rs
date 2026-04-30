@@ -60,6 +60,7 @@ impl SkillGroupService {
         let member_ids = db.get_group_member_ids(group_id)?;
 
         // 收集分组开启的 app 列表
+        // 若所有 app 均关闭，enable 步骤为空，相当于激活后清空所有 skill（有意设计）
         let mut enabled_apps: Vec<AppType> = Vec::new();
         if group.apps.claude { enabled_apps.push(AppType::Claude); }
         if group.apps.codex { enabled_apps.push(AppType::Codex); }
