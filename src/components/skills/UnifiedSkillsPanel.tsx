@@ -382,7 +382,7 @@ const UnifiedSkillsPanel = React.forwardRef<
         <button
           type="button"
           onClick={() => setActiveTab("installed")}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
             activeTab === "installed"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -393,7 +393,7 @@ const UnifiedSkillsPanel = React.forwardRef<
         <button
           type="button"
           onClick={() => setActiveTab("groups")}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
             activeTab === "groups"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
