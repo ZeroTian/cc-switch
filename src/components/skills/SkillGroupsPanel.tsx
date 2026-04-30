@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Edit2, Trash2, Play, Square, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { AppToggleGroup } from "@/components/common/AppToggleGroup";
+import { SKILLS_APP_IDS } from "@/config/appConfig";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SkillGroupEditDialog } from "./SkillGroupEditDialog";
 import {
@@ -14,7 +17,8 @@ import {
   useActivateSkillGroup,
   useDeactivateAllSkillGroups,
 } from "@/hooks/useSkillGroups";
-import type { SkillGroup } from "@/lib/api/skills";
+import type { AppId } from "@/lib/api/types";
+import type { SkillGroup, SkillGroupApps } from "@/lib/api/skills";
 
 export function SkillGroupsPanel() {
   const { t } = useTranslation();
@@ -36,7 +40,7 @@ export function SkillGroupsPanel() {
   const activateMutation = useActivateSkillGroup();
   const deactivateMutation = useDeactivateAllSkillGroups();
 
-  const handleSave = async (params: { name: string; description?: string; icon?: string }) => {
+  const handleSave = async (params: { name: string; description?: string; apps: SkillGroupApps }) => {
     const { group } = editDialogState;
     try {
       if (group) {
@@ -109,11 +113,10 @@ export function SkillGroupsPanel() {
           {groups.map((group) => (
             <div
               key={group.id}
-              className={`flex items-start gap-3 rounded-lg border p-3 ${
+              className={`flex items-center gap-4 rounded-lg border px-4 py-3 ${
                 group.isActive ? "border-primary bg-primary/5" : ""
               }`}
             >
-              <div className="text-2xl leading-none mt-0.5">{group.icon ?? "📁"}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-sm">{group.name}</span>
@@ -129,6 +132,13 @@ export function SkillGroupsPanel() {
                   </p>
                 )}
               </div>
+              <TooltipProvider delayDuration={300}>
+                <AppToggleGroup
+                  apps={group.apps as unknown as Record<AppId, boolean>}
+                  onToggle={() => {}}
+                  appIds={SKILLS_APP_IDS}
+                />
+              </TooltipProvider>
               <div className="flex items-center gap-1 shrink-0">
                 <Button
                   variant={group.isActive ? "secondary" : "outline"}

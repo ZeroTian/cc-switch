@@ -1,6 +1,6 @@
 //! 技能分组命令层
 
-use crate::database::dao::skill_groups::SkillGroup;
+use crate::database::dao::skill_groups::{SkillGroup, SkillGroupApps};
 use crate::services::skill_group::SkillGroupService;
 use crate::store::AppState;
 use tauri::State;
@@ -14,10 +14,10 @@ pub fn get_skill_groups(app_state: State<'_, AppState>) -> Result<Vec<SkillGroup
 pub fn create_skill_group(
     name: String,
     description: Option<String>,
-    icon: Option<String>,
+    apps: SkillGroupApps,
     app_state: State<'_, AppState>,
 ) -> Result<SkillGroup, String> {
-    SkillGroupService::create(&app_state.db, name, description, icon).map_err(|e| e.to_string())
+    SkillGroupService::create(&app_state.db, name, description, apps).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -25,10 +25,10 @@ pub fn update_skill_group(
     id: String,
     name: String,
     description: Option<String>,
-    icon: Option<String>,
+    apps: SkillGroupApps,
     app_state: State<'_, AppState>,
 ) -> Result<SkillGroup, String> {
-    SkillGroupService::update(&app_state.db, &id, name, description, icon)
+    SkillGroupService::update(&app_state.db, &id, name, description, apps)
         .map_err(|e| e.to_string())
 }
 
