@@ -281,3 +281,15 @@ export const skillsApi = {
     return await invoke("install_skills_from_zip", { filePath, currentApp });
   },
 };
+
+/** 技能分组 */
+export interface SkillGroup {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  isActive: boolean;
+  sortIndex?: number;
+  createdAt: number;
+  updatedAt: number;
+}
