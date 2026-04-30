@@ -43,6 +43,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { SkillGroupsPanel } from "./SkillGroupsPanel";
+import { useSkillGroups, useDeactivateAllSkillGroups } from "@/hooks/useSkillGroups";
 
 interface UnifiedSkillsPanelProps {
   onOpenDiscovery: () => void;
@@ -101,6 +103,10 @@ const UnifiedSkillsPanel = React.forwardRef<
   } = useCheckSkillUpdates();
   const updateSkillMutation = useUpdateSkill();
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
+  const [activeTab, setActiveTab] = useState<"installed" | "groups">("installed");
+  const { data: groups = [] } = useSkillGroups();
+  const deactivateGroupMutation = useDeactivateAllSkillGroups();
+  const activeGroup = groups.find((g) => g.isActive);
 
   const updatesMap = useMemo(() => {
     const map: Record<string, SkillUpdateInfo> = {};
@@ -345,6 +351,25 @@ const UnifiedSkillsPanel = React.forwardRef<
 
   return (
     <div className="px-6 flex flex-col flex-1 min-h-0 overflow-hidden">
+      {/* 标签页切换 */}
+      <div className="flex gap-1 mb-3 border-b pb-2">
+        <Button
+          variant={activeTab === "installed" ? "secondary" : "ghost"}
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => setActiveTab("installed")}
+        >
+          {t("skills.tabInstalled", "已安装")}
+        </Button>
+        <Button
+          variant={activeTab === "groups" ? "secondary" : "ghost"}
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => setActiveTab("groups")}
+        >
+          {t("skillGroups.title", "分组")}
+        </Button>
+      </div>
       <div className="flex items-center justify-between">
         <AppCountBar
           totalLabel={t("skills.installed", { count: skills?.length || 0 })}
@@ -398,45 +423,70 @@ const UnifiedSkillsPanel = React.forwardRef<
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
-        {isLoading ? (
-          <div className="text-center py-12 text-muted-foreground">
-            {t("skills.loading")}
-          </div>
-        ) : !skills || skills.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-              <Sparkles size={24} className="text-muted-foreground" />
+      {/* 激活提示条 */}
+      {activeGroup && (
+        <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-md bg-primary/10 text-sm">
+          <span>{activeGroup.icon ?? "📁"}</span>
+          <span className="font-medium truncate flex-1">
+            {t("skillGroups.activeBanner", "当前激活：{{name}}", { name: activeGroup.name })}
+          </span>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs shrink-0"
+            onClick={() => deactivateGroupMutation.mutate()}
+            disabled={deactivateGroupMutation.isPending}
+          >
+            {t("skillGroups.deactivate", "停用")}
+          </Button>
+        </div>
+      )}
+
+      {activeTab === "installed" ? (
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
+          {isLoading ? (
+            <div className="text-center py-12 text-muted-foreground">
+              {t("skills.loading")}
             </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">
-              {t("skills.noInstalled")}
-            </h3>
-            <p className="text-muted-foreground text-sm">
-              {t("skills.noInstalledDescription")}
-            </p>
-          </div>
-        ) : (
-          <TooltipProvider delayDuration={300}>
-            <div className="rounded-xl border border-border-default overflow-hidden">
-              {skills.map((skill, index) => (
-                <InstalledSkillListItem
-                  key={skill.id}
-                  skill={skill}
-                  hasUpdate={!!updatesMap[skill.id]}
-                  isUpdating={
-                    updateSkillMutation.isPending &&
-                    updateSkillMutation.variables === skill.id
-                  }
-                  onToggleApp={handleToggleApp}
-                  onUninstall={() => handleUninstall(skill)}
-                  onUpdate={() => handleUpdateSkill(skill)}
-                  isLast={index === skills.length - 1}
-                />
-              ))}
+          ) : !skills || skills.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
+                <Sparkles size={24} className="text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-medium text-foreground mb-2">
+                {t("skills.noInstalled")}
+              </h3>
+              <p className="text-muted-foreground text-sm">
+                {t("skills.noInstalledDescription")}
+              </p>
             </div>
-          </TooltipProvider>
-        )}
-      </div>
+          ) : (
+            <TooltipProvider delayDuration={300}>
+              <div className="rounded-xl border border-border-default overflow-hidden">
+                {skills.map((skill, index) => (
+                  <InstalledSkillListItem
+                    key={skill.id}
+                    skill={skill}
+                    hasUpdate={!!updatesMap[skill.id]}
+                    isUpdating={
+                      updateSkillMutation.isPending &&
+                      updateSkillMutation.variables === skill.id
+                    }
+                    onToggleApp={handleToggleApp}
+                    onUninstall={() => handleUninstall(skill)}
+                    onUpdate={() => handleUpdateSkill(skill)}
+                    isLast={index === skills.length - 1}
+                  />
+                ))}
+              </div>
+            </TooltipProvider>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
+          <SkillGroupsPanel />
+        </div>
+      )}
 
       {confirmDialog && (
         <ConfirmDialog
