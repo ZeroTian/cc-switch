@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Plus, Edit2, Trash2, Play, Square, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -114,17 +113,15 @@ export function SkillGroupsPanel() {
             <div
               key={group.id}
               className={`flex items-center gap-4 rounded-lg border px-4 py-3 ${
-                group.isActive ? "border-primary bg-primary/5" : ""
+                group.isActive ? "border-l-2 border-l-primary" : ""
               }`}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{group.name}</span>
                   {group.isActive && (
-                    <Badge variant="default" className="text-[10px] py-0 px-1.5">
-                      {t("skillGroups.active", "激活中")}
-                    </Badge>
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
                   )}
+                  <span className="font-medium text-sm">{group.name}</span>
                 </div>
                 {group.description && (
                   <p className="text-xs text-muted-foreground mt-0.5 truncate">

@@ -6,8 +6,10 @@ import {
   ExternalLink,
   RefreshCw,
   Loader2,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -104,6 +106,7 @@ const UnifiedSkillsPanel = React.forwardRef<
   const updateSkillMutation = useUpdateSkill();
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
   const [activeTab, setActiveTab] = useState<"installed" | "groups">("installed");
+  const [searchQuery, setSearchQuery] = useState("");
   const { data: groups = [] } = useSkillGroups();
   const deactivateGroupMutation = useDeactivateAllSkillGroups();
   const activeGroup = groups.find((g) => g.isActive);
@@ -129,6 +132,17 @@ const UnifiedSkillsPanel = React.forwardRef<
     }
     return map;
   }, [groups]);
+
+  const filteredSkills = useMemo(() => {
+    if (!skills) return [];
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return skills;
+    return skills.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.description ?? "").toLowerCase().includes(q)
+    );
+  }, [skills, searchQuery]);
 
   const enabledCounts = useMemo(() => {
     const counts = {
@@ -435,17 +449,15 @@ const UnifiedSkillsPanel = React.forwardRef<
         </div>
       </div>}
 
-      {/* 激活提示条 */}
-      {activeGroup && (
-        <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-md bg-primary/10 text-sm">
-          {activeGroup.icon && <span>{activeGroup.icon}</span>}
-          <span className="font-medium truncate flex-1">
-            {t("skillGroups.activeBanner", "当前激活：{{name}}", { name: activeGroup.name })}
-          </span>
+      {/* 激活提示条（仅在已安装 tab 显示） */}
+      {activeGroup && activeTab === "installed" && (
+        <div className="flex items-center gap-2 mb-2 pl-3 pr-2 py-1.5 border-l-2 border-primary text-sm">
+          <span className="text-muted-foreground">分组：</span>
+          <span className="font-medium text-foreground truncate flex-1">{activeGroup.name}</span>
           <Button
-            variant="link"
+            variant="ghost"
             size="sm"
-            className="h-auto p-0 text-xs shrink-0"
+            className="h-6 text-xs text-muted-foreground hover:text-foreground shrink-0"
             onClick={() => deactivateGroupMutation.mutate()}
             disabled={deactivateGroupMutation.isPending}
           >
@@ -455,7 +467,18 @@ const UnifiedSkillsPanel = React.forwardRef<
       )}
 
       {activeTab === "installed" ? (
-        <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* 搜索框 */}
+          <div className="relative mb-2 shrink-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder={t("skills.search", "搜索技能名称或描述...")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 focus:ring-0 focus:ring-offset-0"
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
           {isLoading ? (
             <div className="text-center py-12 text-muted-foreground">
               {t("skills.loading")}
@@ -472,10 +495,14 @@ const UnifiedSkillsPanel = React.forwardRef<
                 {t("skills.noInstalledDescription")}
               </p>
             </div>
+          ) : filteredSkills.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground text-sm">
+              {t("skills.noSearchResult", "没有匹配的技能")}
+            </div>
           ) : (
             <TooltipProvider delayDuration={300}>
               <div className="rounded-xl border border-border-default overflow-hidden">
-                {skills.map((skill, index) => (
+                {filteredSkills.map((skill, index) => (
                   <InstalledSkillListItem
                     key={skill.id}
                     skill={skill}
@@ -488,12 +515,13 @@ const UnifiedSkillsPanel = React.forwardRef<
                     onToggleApp={handleToggleApp}
                     onUninstall={() => handleUninstall(skill)}
                     onUpdate={() => handleUpdateSkill(skill)}
-                    isLast={index === skills.length - 1}
+                    isLast={index === filteredSkills.length - 1}
                   />
                 ))}
               </div>
             </TooltipProvider>
           )}
+          </div>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
