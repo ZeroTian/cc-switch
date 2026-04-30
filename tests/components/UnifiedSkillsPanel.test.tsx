@@ -14,6 +14,11 @@ const installFromZipMock = vi.fn();
 const deleteSkillBackupMock = vi.fn();
 const restoreSkillBackupMock = vi.fn();
 
+vi.mock("@/hooks/useSkillGroups", () => ({
+  useSkillGroups: () => ({ data: [], isLoading: false }),
+  useDeactivateAllSkillGroups: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
