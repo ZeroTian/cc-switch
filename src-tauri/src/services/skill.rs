@@ -2761,6 +2761,31 @@ impl SkillService {
         Ok(failed)
     }
 
+    /// 按 skill_ids 列表，将对应 skill 同步到指定的 app 列表（忽略 skill 自身的 per-app 设置）。
+    /// 返回同步失败的 skill 名称列表。
+    pub fn enable_skills_by_ids_for_apps(
+        db: &Arc<Database>,
+        ids: &[String],
+        apps: &[AppType],
+    ) -> Result<Vec<String>> {
+        let mut failed: Vec<String> = Vec::new();
+        for id in ids {
+            match db.get_installed_skill(id) {
+                Ok(Some(skill)) => {
+                    for app in apps {
+                        if let Err(e) = Self::sync_to_app_dir(&skill.directory, app) {
+                            log::warn!("enable_skills_by_ids_for_apps: 同步 skill {} to {:?} 失败: {e}", skill.name, app);
+                            failed.push(skill.name.clone());
+                        }
+                    }
+                }
+                Ok(None) => log::warn!("enable_skills_by_ids_for_apps: skill {id} 不存在，跳过"),
+                Err(e) => log::warn!("enable_skills_by_ids_for_apps: 读取 skill {id} 失败: {e}"),
+            }
+        }
+        Ok(failed)
+    }
+
     /// 搜索 skills.sh 公共目录
     pub async fn search_skills_sh(
         query: &str,

@@ -1,5 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SkillGroup } from "@/lib/api/skills";
+import type { SkillGroup, SkillGroupApps } from "@/lib/api/skills";
+
+export const DEFAULT_GROUP_APPS: SkillGroupApps = {
+  claude: true,
+  codex: false,
+  gemini: false,
+  opencode: false,
+  hermes: false,
+};
 
 export const skillGroupsApi = {
   getAll: (): Promise<SkillGroup[]> => invoke("get_skill_groups"),
@@ -7,25 +15,25 @@ export const skillGroupsApi = {
   create: (params: {
     name: string;
     description?: string;
-    icon?: string;
+    apps: SkillGroupApps;
   }): Promise<SkillGroup> =>
     invoke("create_skill_group", {
       name: params.name,
       description: params.description ?? null,
-      icon: params.icon ?? null,
+      apps: params.apps,
     }),
 
   update: (params: {
     id: string;
     name: string;
     description?: string;
-    icon?: string;
+    apps: SkillGroupApps;
   }): Promise<SkillGroup> =>
     invoke("update_skill_group", {
       id: params.id,
       name: params.name,
       description: params.description ?? null,
-      icon: params.icon ?? null,
+      apps: params.apps,
     }),
 
   delete: (id: string): Promise<void> => invoke("delete_skill_group", { id }),

@@ -281,6 +281,14 @@ export const skillsApi = {
 };
 
 /** 技能分组 */
+export interface SkillGroupApps {
+  claude: boolean;
+  codex: boolean;
+  gemini: boolean;
+  opencode: boolean;
+  hermes: boolean;
+}
+
 export interface SkillGroup {
   id: string;
   name: string;
@@ -290,4 +298,5 @@ export interface SkillGroup {
   sortIndex?: number;
   createdAt: number;
   updatedAt: number;
+  apps: SkillGroupApps;
 }

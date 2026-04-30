@@ -426,7 +426,7 @@ const UnifiedSkillsPanel = React.forwardRef<
       {/* 激活提示条 */}
       {activeGroup && (
         <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-md bg-primary/10 text-sm">
-          <span>{activeGroup.icon ?? "📁"}</span>
+          {activeGroup.icon && <span>{activeGroup.icon}</span>}
           <span className="font-medium truncate flex-1">
             {t("skillGroups.activeBanner", "当前激活：{{name}}", { name: activeGroup.name })}
           </span>
