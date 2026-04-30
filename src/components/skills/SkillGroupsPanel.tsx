@@ -112,8 +112,10 @@ export function SkillGroupsPanel() {
           {groups.map((group) => (
             <div
               key={group.id}
-              className={`flex items-center gap-4 rounded-lg border px-4 py-3 ${
-                group.isActive ? "border-l-2 border-l-primary" : ""
+              className={`flex items-center gap-4 rounded-lg px-4 py-3 ${
+                group.isActive
+                  ? "pl-3 border-l-2 border-l-primary border border-border-default"
+                  : "border"
               }`}
             >
               <div className="flex-1 min-w-0">
