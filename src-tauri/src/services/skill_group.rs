@@ -60,8 +60,10 @@ impl SkillGroupService {
 
         let member_ids = db.get_group_member_ids(group_id)?;
 
-        // 收集分组开启的 app 列表
-        // 若所有 app 均关闭，enable 步骤为空，相当于激活后清空所有 skill（有意设计）
+        // 1. 保存当前所有 skill 的 enabled_* 快照（覆盖旧快照）
+        db.save_skill_group_snapshot()?;
+
+        // 2. 收集分组开启的 app 列表
         let mut enabled_apps: Vec<AppType> = Vec::new();
         if group.apps.claude { enabled_apps.push(AppType::Claude); }
         if group.apps.codex { enabled_apps.push(AppType::Codex); }
@@ -69,13 +71,13 @@ impl SkillGroupService {
         if group.apps.opencode { enabled_apps.push(AppType::OpenCode); }
         if group.apps.hermes { enabled_apps.push(AppType::Hermes); }
 
-        // 先禁用所有 skill 的文件系统链接
-        SkillService::disable_all_skills(db)?;
+        // 3. 先禁用所有 skill（文件系统 + 数据库）
+        SkillService::disable_all_skills_with_db(db)?;
 
-        // 按分组的 app 开关同步组内所有 skill（忽略 skill 自身的 per-app 设置）
-        let sync_errors = SkillService::enable_skills_by_ids_for_apps(db, &member_ids, &enabled_apps)?;
+        // 4. 按分组 app 开关启用组内 skill（文件系统 + 数据库）
+        let sync_errors = SkillService::enable_skills_by_ids_for_apps_with_db(db, &member_ids, &enabled_apps)?;
 
-        // 无论同步是否有部分失败，都更新 is_active
+        // 5. 更新 is_active（无论部分失败都标记激活）
         db.set_skill_group_active(group_id, true)?;
 
         if !sync_errors.is_empty() {
@@ -89,7 +91,23 @@ impl SkillGroupService {
     }
 
     pub fn deactivate_all(db: &Arc<Database>) -> Result<()> {
+        // 从快照恢复所有 skill 的 enabled_* 状态（同时更新数据库）
+        let snapshot = db.restore_skill_group_snapshot()?;
+
+        // 先清空所有文件系统链接
         SkillService::disable_all_skills(db)?;
+
+        // 按恢复后的状态重新同步文件系统
+        for (id, apps) in &snapshot {
+            for app in apps.enabled_apps() {
+                if let Ok(Some(skill)) = db.get_installed_skill(id) {
+                    if let Err(e) = SkillService::sync_to_app_dir_pub(&skill.directory, &app) {
+                        log::warn!("deactivate: 恢复 skill {} to {:?} 失败: {e}", skill.name, app);
+                    }
+                }
+            }
+        }
+
         db.clear_all_skill_group_active()?;
         Ok(())
     }

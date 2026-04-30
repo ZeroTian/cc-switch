@@ -260,4 +260,70 @@ impl Database {
         }
         Ok(count)
     }
+
+    // ========== 技能分组快照 ==========
+
+    /// 保存当前所有 skill 的 enabled_* 状态到快照（覆盖旧快照）
+    pub fn save_skill_group_snapshot(&self) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        conn.execute("DELETE FROM skill_group_snapshot", [])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute_batch(
+            "INSERT INTO skill_group_snapshot (skill_id, enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes)
+             SELECT id, enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes FROM skills",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// 从快照恢复所有 skill 的 enabled_* 状态
+    pub fn restore_skill_group_snapshot(&self) -> Result<Vec<(String, SkillApps)>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare(
+                "SELECT skill_id, enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes
+                 FROM skill_group_snapshot",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let rows: Vec<(String, SkillApps)> = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    SkillApps {
+                        claude: row.get(1)?,
+                        codex: row.get(2)?,
+                        gemini: row.get(3)?,
+                        opencode: row.get(4)?,
+                        hermes: row.get(5)?,
+                        openclaw: false,
+                    },
+                ))
+            })
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .map(|r| r.map_err(|e| AppError::Database(e.to_string())))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // 批量更新数据库
+        for (id, apps) in &rows {
+            conn.execute(
+                "UPDATE skills SET enabled_claude=?1, enabled_codex=?2, enabled_gemini=?3, enabled_opencode=?4, enabled_hermes=?5 WHERE id=?6",
+                params![apps.claude, apps.codex, apps.gemini, apps.opencode, apps.hermes, id],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        }
+
+        // 清空快照
+        conn.execute("DELETE FROM skill_group_snapshot", [])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(rows)
+    }
+
+    /// 清空快照（手动退出分组模式时调用）
+    pub fn clear_skill_group_snapshot(&self) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        conn.execute("DELETE FROM skill_group_snapshot", [])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
 }
