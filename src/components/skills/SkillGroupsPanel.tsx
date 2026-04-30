@@ -38,30 +38,42 @@ export function SkillGroupsPanel() {
 
   const handleSave = async (params: { name: string; description?: string; icon?: string }) => {
     const { group } = editDialogState;
-    if (group) {
-      await updateMutation.mutateAsync({ id: group.id, ...params });
-      toast.success(t("skillGroups.updated", "分组已更新"));
-    } else {
-      await createMutation.mutateAsync(params);
-      toast.success(t("skillGroups.created", "分组已创建"));
+    try {
+      if (group) {
+        await updateMutation.mutateAsync({ id: group.id, ...params });
+        toast.success(t("skillGroups.updated", "分组已更新"));
+      } else {
+        await createMutation.mutateAsync(params);
+        toast.success(t("skillGroups.created", "分组已创建"));
+      }
+      setEditDialogState({ open: false, group: null });
+    } catch (error) {
+      toast.error(t("common.error", "操作失败"), { description: String(error) });
     }
-    setEditDialogState({ open: false, group: null });
   };
 
   const handleDelete = async () => {
     if (!confirmDelete.group) return;
-    await deleteMutation.mutateAsync(confirmDelete.group.id);
-    toast.success(t("skillGroups.deleted", "分组已删除"));
-    setConfirmDelete({ open: false, group: null });
+    try {
+      await deleteMutation.mutateAsync(confirmDelete.group.id);
+      toast.success(t("skillGroups.deleted", "分组已删除"));
+      setConfirmDelete({ open: false, group: null });
+    } catch (error) {
+      toast.error(t("common.error", "操作失败"), { description: String(error) });
+    }
   };
 
   const handleActivate = async (group: SkillGroup) => {
-    if (group.isActive) {
-      await deactivateMutation.mutateAsync();
-      toast.success(t("skillGroups.deactivated", "已停用分组"));
-    } else {
-      await activateMutation.mutateAsync(group.id);
-      toast.success(t("skillGroups.activated", `已激活：${group.name}`));
+    try {
+      if (group.isActive) {
+        await deactivateMutation.mutateAsync();
+        toast.success(t("skillGroups.deactivated", "已停用分组"));
+      } else {
+        await activateMutation.mutateAsync(group.id);
+        toast.success(t("skillGroups.activated", "已激活：{{name}}", { name: group.name }));
+      }
+    } catch (error) {
+      toast.error(t("common.error", "操作失败"), { description: String(error) });
     }
   };
 
@@ -166,7 +178,8 @@ export function SkillGroupsPanel() {
         title={t("skillGroups.deleteTitle", "删除分组")}
         message={t(
           "skillGroups.deleteMessage",
-          `确认删除「${confirmDelete.group?.name}」？分组内的 Skill 不会被卸载。`
+          "确认删除「{{name}}」？分组内的 Skill 不会被卸载。",
+          { name: confirmDelete.group?.name }
         )}
         confirmText={t("common.delete", "删除")}
         variant="destructive"

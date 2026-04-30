@@ -81,14 +81,3 @@ pub fn get_group_member_ids(
         .get_group_member_ids(&group_id)
         .map_err(|e| e.to_string())
 }
-
-#[tauri::command]
-pub fn get_skill_group_names(
-    skill_id: String,
-    app_state: State<'_, AppState>,
-) -> Result<Vec<String>, String> {
-    app_state
-        .db
-        .get_skill_group_names(&skill_id)
-        .map_err(|e| e.to_string())
-}

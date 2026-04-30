@@ -129,7 +129,7 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
                 filtered.map((skill) => {
                   const checked = memberIds.includes(skill.id);
                   const apps = Object.entries(skill.apps)
-                    .filter(([, v]) => v)
+                    .filter(([k, v]) => v && k !== "openclaw")
                     .map(([k]) => k);
                   return (
                     <label

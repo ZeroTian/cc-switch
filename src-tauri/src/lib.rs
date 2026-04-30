@@ -1171,7 +1171,6 @@ pub fn run() {
             commands::add_skill_to_group,
             commands::remove_skill_from_group,
             commands::get_group_member_ids,
-            commands::get_skill_group_names,
             // Skill management (legacy API compatibility)
             commands::get_skills,
             commands::get_skills_for_app,

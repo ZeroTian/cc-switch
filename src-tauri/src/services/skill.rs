@@ -2753,14 +2753,17 @@ impl SkillService {
         Ok(())
     }
 
-    /// 按 skill_ids 列表，将对应 skill 按其 per-app 开关重新同步到文件系统
-    pub fn enable_skills_by_ids(db: &Arc<Database>, ids: &[String]) -> Result<()> {
+    /// 按 skill_ids 列表，将对应 skill 按其 per-app 开关重新同步到文件系统。
+    /// 返回同步失败的 skill 名称列表（空表示全部成功）。
+    pub fn enable_skills_by_ids(db: &Arc<Database>, ids: &[String]) -> Result<Vec<String>> {
+        let mut failed: Vec<String> = Vec::new();
         for id in ids {
             match db.get_installed_skill(id) {
                 Ok(Some(skill)) => {
                     for app in skill.apps.enabled_apps() {
                         if let Err(e) = Self::sync_to_app_dir(&skill.directory, &app) {
                             log::warn!("enable_skills_by_ids: 同步 skill {} to {:?} 失败: {e}", skill.name, app);
+                            failed.push(skill.name.clone());
                         }
                     }
                 }
@@ -2768,7 +2771,7 @@ impl SkillService {
                 Err(e) => log::warn!("enable_skills_by_ids: 读取 skill {id} 失败: {e}"),
             }
         }
-        Ok(())
+        Ok(failed)
     }
 
     /// 搜索 skills.sh 公共目录
