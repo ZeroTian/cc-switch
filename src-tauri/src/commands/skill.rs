@@ -85,7 +85,7 @@ pub fn restore_skill_backup(
 }
 
 /// 切换 Skill 的应用启用状态
-/// 如果当前有激活的分组，手动修改会自动清除分组激活状态
+/// 如果当前有激活的分组，手动修改会自动清除分组激活状态和快照
 #[tauri::command]
 pub fn toggle_skill_app(
     id: String,
@@ -95,8 +95,9 @@ pub fn toggle_skill_app(
 ) -> Result<bool, String> {
     let app_type = parse_app_type(&app)?;
     SkillService::toggle_app(&app_state.db, &id, &app_type, enabled).map_err(|e| e.to_string())?;
-    // 手动修改即退出分组模式
+    // 手动修改即退出分组模式，清除激活状态和快照
     app_state.db.clear_all_skill_group_active().map_err(|e| e.to_string())?;
+    app_state.db.clear_skill_group_snapshot().map_err(|e| e.to_string())?;
     Ok(true)
 }
 
