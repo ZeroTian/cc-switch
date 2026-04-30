@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Plus, Edit2, Trash2, Play, Loader2 } from "lucide-react";
+import { Plus, Edit2, Trash2, Play, Pause, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppToggleGroup } from "@/components/common/AppToggleGroup";
@@ -113,20 +113,17 @@ export function SkillGroupsPanel() {
           {groups.map((group) => (
             <div
               key={group.id}
-              className={`flex items-center gap-4 rounded-lg px-4 py-3 ${
+              className={`flex items-center gap-4 rounded-lg px-4 py-3 border ${
                 group.isActive
-                  ? "pl-3 border-l-2 border-l-primary border border-border-default"
-                  : "border"
+                  ? "border-primary bg-primary/5"
+                  : "border-border-default"
               }`}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{group.name}</span>
-                  {group.isActive && (
-                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-primary text-primary-foreground shrink-0">
-                      激活中
-                    </span>
-                  )}
+                  <span className={`font-medium text-sm ${group.isActive ? "text-primary" : ""}`}>
+                    {group.name}
+                  </span>
                 </div>
                 {group.description && (
                   <p className="text-xs text-muted-foreground mt-0.5 truncate">
@@ -140,18 +137,29 @@ export function SkillGroupsPanel() {
                 appIds={SKILLS_APP_IDS}
               />
               <div className="flex items-center gap-1 shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => handleActivate(group)}
-                  disabled={activateMutation.isPending || deactivateMutation.isPending}
-                >
-                  {group.isActive
-                    ? t("skillGroups.deactivate", "停用")
-                    : <><Play className="h-3 w-3 mr-1" />{t("skillGroups.activate", "激活")}</>
-                  }
-                </Button>
+                {group.isActive ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs px-3"
+                    onClick={() => handleActivate(group)}
+                    disabled={deactivateMutation.isPending}
+                  >
+                    <Pause className="h-3 w-3 mr-1" />
+                    {t("skillGroups.deactivate", "停用")}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="h-7 text-xs px-3"
+                    onClick={() => handleActivate(group)}
+                    disabled={activateMutation.isPending}
+                  >
+                    <Play className="h-3 w-3 mr-1" />
+                    {t("skillGroups.activate", "激活")}
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
