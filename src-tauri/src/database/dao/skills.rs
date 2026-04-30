@@ -281,7 +281,7 @@ impl Database {
     pub fn restore_skill_group_snapshot(&self) -> Result<Vec<(String, SkillApps)>, AppError> {
         let conn = lock_conn!(self.conn);
 
-        // 用独立 block 确保 stmt 在批量 UPDATE 前释放借用
+        // 先收集快照数据，让 stmt 在后续 UPDATE 前释放借用
         let rows: Vec<(String, SkillApps)> = {
             let mut stmt = conn
                 .prepare(
@@ -289,7 +289,8 @@ impl Database {
                      FROM skill_group_snapshot",
                 )
                 .map_err(|e| AppError::Database(e.to_string()))?;
-            stmt.query_map([], |row| {
+            let result = stmt
+                .query_map([], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
                         SkillApps {
@@ -303,8 +304,9 @@ impl Database {
                 })
                 .map_err(|e| AppError::Database(e.to_string()))?
                 .map(|r| r.map_err(|e| AppError::Database(e.to_string())))
-                .collect::<Result<Vec<_>, _>>()?
-        }; // stmt 在此处 drop，释放对 conn 的借用
+                .collect::<Result<Vec<_>, _>>()?;
+            result
+        }; // stmt 在此处 drop
 
         // 批量更新数据库
         for (id, apps) in &rows {
