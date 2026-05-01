@@ -434,6 +434,19 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
+        // 工作空间激活的分组（勾选即生效）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS workspace_group_active (
+                workspace_id TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, group_id),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
         Ok(())
     }
 
@@ -537,6 +550,11 @@ impl Database {
                         log::info!("迁移数据库从 v14 到 v15（workspaces.path 加唯一约束）");
                         Self::migrate_v14_to_v15(conn)?;
                         Self::set_user_version(conn, 15)?;
+                    }
+                    15 => {
+                        log::info!("迁移数据库从 v15 到 v16（移除快照表，添加 workspace_group_active）");
+                        Self::migrate_v15_to_v16(conn)?;
+                        Self::set_user_version(conn, 16)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1388,6 +1406,20 @@ impl Database {
             INSERT OR IGNORE INTO workspaces_new SELECT id, name, path, created_at, updated_at FROM workspaces;
             DROP TABLE workspaces;
             ALTER TABLE workspaces_new RENAME TO workspaces;",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))
+    }
+
+    fn migrate_v15_to_v16(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS skill_group_snapshot;
+             CREATE TABLE IF NOT EXISTS workspace_group_active (
+                workspace_id TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, group_id),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE
+             );",
         )
         .map_err(|e| AppError::Database(e.to_string()))
     }
