@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import {
   Sparkles,
@@ -109,7 +110,6 @@ const UnifiedSkillsPanel = React.forwardRef<
   const [activeTab, setActiveTab] = useState<"installed" | "groups" | "workspaces">("installed");
   const [searchQuery, setSearchQuery] = useState("");
   const { data: groups = [] } = useSkillGroups();
-  const activeGroups = groups.filter((g) => g.isActive);
 
   const updatesMap = useMemo(() => {
     const map: Record<string, SkillUpdateInfo> = {};
@@ -218,6 +218,18 @@ const UnifiedSkillsPanel = React.forwardRef<
     try {
       const imported = await importMutation.mutateAsync(imports);
       setImportDialogOpen(false);
+      // 将导入的 skill 绑定到用户级别空间
+      for (const skill of imported) {
+        try {
+          await invoke("toggle_workspace_skill", {
+            workspaceId: "user",
+            skillId: skill.id,
+            active: true,
+          });
+        } catch (e) {
+          console.warn(`绑定 skill ${skill.name} 到用户级别空间失败: ${e}`);
+        }
+      }
       toast.success(t("skills.importSuccess", { count: imported.length }), {
         closeButton: true,
       });
@@ -465,16 +477,6 @@ const UnifiedSkillsPanel = React.forwardRef<
           </Button>
         </div>
       </div>}
-
-      {/* 激活提示条（仅在已安装 tab 显示） */}
-      {activeGroups.length > 0 && activeTab === "installed" && (
-        <div className="flex items-center gap-2 mb-2 pl-3 pr-2 py-1.5 border-l-2 border-primary text-sm">
-          <span className="text-muted-foreground">{t("skillGroups.activeLabelPrefix", "分组：")} </span>
-          <span className="font-medium text-foreground truncate flex-1">
-            {t("skillGroups.activeCount", "{{count}} 个已激活", { count: activeGroups.length })}
-          </span>
-        </div>
-      )}
 
       {activeTab === "installed" ? (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
