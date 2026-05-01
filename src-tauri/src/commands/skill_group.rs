@@ -2,6 +2,7 @@
 
 use crate::database::dao::skill_groups::{SkillGroup, SkillGroupApps};
 use crate::services::skill_group::SkillGroupService;
+use crate::services::workspace_skill::WorkspaceSkillService;
 use crate::store::AppState;
 use tauri::State;
 
@@ -38,13 +39,12 @@ pub fn delete_skill_group(id: String, app_state: State<'_, AppState>) -> Result<
 }
 
 #[tauri::command]
-pub fn activate_skill_group(id: String, app_state: State<'_, AppState>) -> Result<(), String> {
-    SkillGroupService::activate(&app_state.db, &id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn deactivate_all_skill_groups(app_state: State<'_, AppState>) -> Result<(), String> {
-    SkillGroupService::deactivate_all(&app_state.db).map_err(|e| e.to_string())
+pub fn set_group_active(
+    id: String,
+    active: bool,
+    app_state: State<'_, AppState>,
+) -> Result<(), String> {
+    SkillGroupService::set_active(&app_state.db, &id, active).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -56,7 +56,16 @@ pub fn add_skill_to_group(
     app_state
         .db
         .add_skill_to_group(&group_id, &skill_id)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // 若该分组全局已激活，同步到全局
+    if let Ok(Some(group)) = app_state.db.get_skill_group(&group_id) {
+        if group.is_active {
+            let _ = SkillGroupService::sync_active_groups_to_global(&app_state.db);
+        }
+    }
+    // 同步到绑定该分组的工作空间
+    let _ = WorkspaceSkillService::sync_workspaces_for_group(&app_state.db, &group_id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -68,7 +77,16 @@ pub fn remove_skill_from_group(
     app_state
         .db
         .remove_skill_from_group(&group_id, &skill_id)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // 若该分组全局已激活，同步到全局
+    if let Ok(Some(group)) = app_state.db.get_skill_group(&group_id) {
+        if group.is_active {
+            let _ = SkillGroupService::sync_active_groups_to_global(&app_state.db);
+        }
+    }
+    // 同步到绑定该分组的工作空间
+    let _ = WorkspaceSkillService::sync_workspaces_for_group(&app_state.db, &group_id);
+    Ok(())
 }
 
 #[tauri::command]
