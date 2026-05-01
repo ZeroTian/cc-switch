@@ -44,21 +44,11 @@ export function useDeleteSkillGroup() {
   });
 }
 
-export function useActivateSkillGroup() {
+export function useSetGroupActive() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => skillGroupsApi.activate(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["skillGroups"] });
-      qc.invalidateQueries({ queryKey: ["skills", "installed"] });
-    },
-  });
-}
-
-export function useDeactivateAllSkillGroups() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => skillGroupsApi.deactivateAll(),
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      skillGroupsApi.setActive(id, active),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["skillGroups"] });
       qc.invalidateQueries({ queryKey: ["skills", "installed"] });

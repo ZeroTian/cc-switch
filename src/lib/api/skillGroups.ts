@@ -38,10 +38,8 @@ export const skillGroupsApi = {
 
   delete: (id: string): Promise<void> => invoke("delete_skill_group", { id }),
 
-  activate: (id: string): Promise<void> =>
-    invoke("activate_skill_group", { id }),
-
-  deactivateAll: (): Promise<void> => invoke("deactivate_all_skill_groups"),
+  setActive: (id: string, active: boolean): Promise<void> =>
+    invoke("set_group_active", { id, active }),
 
   addSkill: (groupId: string, skillId: string): Promise<void> =>
     invoke("add_skill_to_group", { groupId, skillId }),
