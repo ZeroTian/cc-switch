@@ -27,9 +27,13 @@ function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
   const toggleGroupMutation = useToggleWorkspaceGroup();
   const toggleSkillMutation = useToggleWorkspaceSkill();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [groupsExpanded, setGroupsExpanded] = useState(false);
+  const [skillsExpanded, setSkillsExpanded] = useState(false);
 
   const boundGroupIds = new Set(bindings?.groupIds ?? []);
   const boundSkillIds = new Set(bindings?.skillIds ?? []);
+  const boundGroupCount = groups.filter((g) => boundGroupIds.has(g.id)).length;
+  const boundSkillCount = skills.filter((s) => boundSkillIds.has(s.id)).length;
 
   const handleToggleGroup = async (groupId: string, checked: boolean) => {
     setPendingId(groupId);
@@ -54,69 +58,99 @@ function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
   };
 
   return (
-    <div className="border-t border-border-default bg-muted/20 px-4 py-3 space-y-3">
+    <div className="border-t border-border-default bg-muted/20 px-4 py-3 space-y-2">
       {groups.length > 0 && (
-        <div>
-          <div className="text-xs font-medium text-muted-foreground mb-1.5">
-            {t("workspaces.bindGroups", "绑定分组")}
-          </div>
-          <div className="space-y-1">
-            {groups.map((group) => {
-              const checked = boundGroupIds.has(group.id);
-              return (
-                <label
-                  key={group.id}
-                  className="flex items-center gap-2 cursor-pointer rounded px-1 py-1.5 hover:bg-accent"
-                >
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={(v) => handleToggleGroup(group.id, !!v)}
-                    disabled={pendingId === group.id}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium">{group.name}</div>
-                    {group.description && (
-                      <div className="text-xs text-muted-foreground truncate">{group.description}</div>
-                    )}
-                  </div>
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    {t("skillGroups.memberCount", "{{count}} 个 Skill", { count: group.memberIds.length })}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
+        <div className="rounded-md border border-border-default overflow-hidden">
+          <button
+            type="button"
+            className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-accent/50 transition-colors"
+            onClick={() => setGroupsExpanded((v) => !v)}
+          >
+            <span className="text-xs font-medium text-muted-foreground">
+              {t("workspaces.bindGroups", "绑定分组")}
+              {boundGroupCount > 0 && (
+                <span className="ml-1.5 text-primary">({boundGroupCount}/{groups.length})</span>
+              )}
+            </span>
+            {groupsExpanded
+              ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            }
+          </button>
+          {groupsExpanded && (
+            <div className="border-t border-border-default px-2 py-1 space-y-0.5">
+              {groups.map((group) => {
+                const checked = boundGroupIds.has(group.id);
+                return (
+                  <label
+                    key={group.id}
+                    className="flex items-center gap-2 cursor-pointer rounded px-1 py-1.5 hover:bg-accent"
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(v) => handleToggleGroup(group.id, !!v)}
+                      disabled={pendingId === group.id}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">{group.name}</div>
+                      {group.description && (
+                        <div className="text-xs text-muted-foreground truncate">{group.description}</div>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {t("skillGroups.memberCount", "{{count}} 个 Skill", { count: group.memberIds.length })}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
       {skills.length > 0 && (
-        <div>
-          <div className="text-xs font-medium text-muted-foreground mb-1.5">
-            {t("workspaces.bindSkills", "单独绑定 Skill")}
-          </div>
-          <div className="space-y-1">
-            {skills.map((skill) => {
-              const checked = boundSkillIds.has(skill.id);
-              return (
-                <label
-                  key={skill.id}
-                  className="flex items-center gap-2 cursor-pointer rounded px-1 py-1.5 hover:bg-accent"
-                >
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={(v) => handleToggleSkill(skill.id, !!v)}
-                    disabled={pendingId === skill.id}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm">{skill.name}</div>
-                    {skill.description && (
-                      <div className="text-xs text-muted-foreground truncate">{skill.description}</div>
-                    )}
-                  </div>
-                </label>
-              );
-            })}
-          </div>
+        <div className="rounded-md border border-border-default overflow-hidden">
+          <button
+            type="button"
+            className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-accent/50 transition-colors"
+            onClick={() => setSkillsExpanded((v) => !v)}
+          >
+            <span className="text-xs font-medium text-muted-foreground">
+              {t("workspaces.bindSkills", "单独绑定 Skill")}
+              {boundSkillCount > 0 && (
+                <span className="ml-1.5 text-primary">({boundSkillCount}/{skills.length})</span>
+              )}
+            </span>
+            {skillsExpanded
+              ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            }
+          </button>
+          {skillsExpanded && (
+            <div className="border-t border-border-default px-2 py-1 space-y-0.5">
+              {skills.map((skill) => {
+                const checked = boundSkillIds.has(skill.id);
+                return (
+                  <label
+                    key={skill.id}
+                    className="flex items-center gap-2 cursor-pointer rounded px-1 py-1.5 hover:bg-accent"
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(v) => handleToggleSkill(skill.id, !!v)}
+                      disabled={pendingId === skill.id}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm">{skill.name}</div>
+                      {skill.description && (
+                        <div className="text-xs text-muted-foreground truncate">{skill.description}</div>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -127,7 +161,7 @@ function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
       )}
 
       {bindings && (
-        <div className="text-xs text-muted-foreground pt-1 border-t border-border-default">
+        <div className="text-xs text-muted-foreground pt-1">
           {t("workspaces.totalSkills", "共 {{count}} 个 Skill 将被同步", { count: bindings.totalSkillCount })}
         </div>
       )}
