@@ -4,16 +4,8 @@ use crate::database::dao::workspaces::Workspace;
 use crate::services::workspace_skill::WorkspaceSkillService;
 use crate::store::AppState;
 use chrono::Utc;
-use serde::Serialize;
 use tauri::State;
 use uuid::Uuid;
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkspaceApplyResult {
-    pub synced: usize,
-    pub failed: Vec<String>,
-}
 
 #[tauri::command]
 pub fn get_workspaces(app_state: State<'_, AppState>) -> Result<Vec<Workspace>, String> {
@@ -99,11 +91,23 @@ pub fn get_workspace_group_ids(
 }
 
 #[tauri::command]
-pub fn apply_workspace(
+pub fn toggle_group_in_workspace(
+    workspace_id: String,
+    group_id: String,
+    active: bool,
+    app_state: State<'_, AppState>,
+) -> Result<(), String> {
+    WorkspaceSkillService::toggle_group(&app_state.db, &workspace_id, &group_id, active)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_workspace_active_group_ids(
     workspace_id: String,
     app_state: State<'_, AppState>,
-) -> Result<WorkspaceApplyResult, String> {
-    WorkspaceSkillService::apply(&app_state.db, &workspace_id)
-        .map(|r| WorkspaceApplyResult { synced: r.synced, failed: r.failed })
+) -> Result<Vec<String>, String> {
+    app_state
+        .db
+        .get_workspace_active_group_ids(&workspace_id)
         .map_err(|e| e.to_string())
 }
