@@ -381,20 +381,6 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
-        // 技能分组激活快照（保存激活前的 enabled_* 状态，停用时恢复）
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS skill_group_snapshot (
-                skill_id TEXT PRIMARY KEY,
-                enabled_claude BOOLEAN NOT NULL DEFAULT 0,
-                enabled_codex BOOLEAN NOT NULL DEFAULT 0,
-                enabled_gemini BOOLEAN NOT NULL DEFAULT 0,
-                enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
-                enabled_hermes BOOLEAN NOT NULL DEFAULT 0
-            )",
-            [],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
         // 技能与分组多对多关联表
         conn.execute(
             "CREATE TABLE IF NOT EXISTS skill_group_members (
