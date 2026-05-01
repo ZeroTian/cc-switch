@@ -146,18 +146,13 @@ impl Database {
     }
 
     pub fn set_skill_group_active(&self, id: &str, active: bool) -> Result<(), AppError> {
-        let mut conn = lock_conn!(self.conn);
-        let tx = conn.transaction().map_err(|e| AppError::Database(e.to_string()))?;
-        tx.execute("UPDATE skill_groups SET is_active = 0", [])
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        if active {
-            tx.execute(
-                "UPDATE skill_groups SET is_active = 1 WHERE id = ?1",
-                [id],
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        }
-        tx.commit().map_err(|e| AppError::Database(e.to_string()))
+        let conn = lock_conn!(self.conn);
+        conn.execute(
+            "UPDATE skill_groups SET is_active = ?1 WHERE id = ?2",
+            rusqlite::params![active, id],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
     }
 
     pub fn clear_all_skill_group_active(&self) -> Result<(), AppError> {
@@ -194,6 +189,18 @@ impl Database {
             .map_err(|e| AppError::Database(e.to_string()))?;
         let rows = stmt
             .query_map([group_id], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        rows.map(|r| r.map_err(|e| AppError::Database(e.to_string())))
+            .collect()
+    }
+
+    pub fn get_active_skill_group_ids(&self) -> Result<Vec<String>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare("SELECT id FROM skill_groups WHERE is_active = 1")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
             .map_err(|e| AppError::Database(e.to_string()))?;
         rows.map(|r| r.map_err(|e| AppError::Database(e.to_string())))
             .collect()
