@@ -10,7 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Search } from "lucide-react";
 import { useInstalledSkills } from "@/hooks/useSkills";
 import { useGroupMemberIds } from "@/hooks/useSkillGroups";
@@ -50,17 +49,23 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
     }
   }, [memberIds, open]);
 
-  const filtered = installedSkills.filter(
-    (s) =>
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      (s.description ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = installedSkills
+    .filter(
+      (s) =>
+        s.name.toLowerCase().includes(search.toLowerCase()) ||
+        (s.description ?? "").toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => {
+      const aChecked = draftMemberIds.has(a.id) ? 0 : 1;
+      const bChecked = draftMemberIds.has(b.id) ? 0 : 1;
+      return aChecked - bChecked;
+    });
 
-  const toggleMember = (skillId: string, checked: boolean) => {
+  const toggleMember = (skillId: string) => {
     setDraftMemberIds((prev) => {
       const next = new Set(prev);
-      if (checked) next.add(skillId);
-      else next.delete(skillId);
+      if (next.has(skillId)) next.delete(skillId);
+      else next.add(skillId);
       return next;
     });
   };
@@ -110,7 +115,7 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
                   className="pl-8"
                 />
               </div>
-              <div className="space-y-1 border rounded-md p-2 max-h-60 overflow-y-auto">
+              <div className="space-y-0.5 border rounded-md p-1.5 max-h-60 overflow-y-auto">
                 {filtered.length === 0 ? (
                   <div className="text-sm text-muted-foreground py-2 text-center">
                     {t("skillGroups.noSkills", "没有已安装的 Skill")}
@@ -119,24 +124,25 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
                   filtered.map((skill) => {
                     const checked = draftMemberIds.has(skill.id);
                     return (
-                      <label
+                      <button
+                        type="button"
                         key={skill.id}
-                        className="flex items-start gap-2 cursor-pointer rounded px-1 py-1 hover:bg-accent"
+                        className={`w-full flex items-start gap-2 rounded px-2 py-1.5 text-left transition-colors ${
+                          checked ? "bg-primary/8 hover:bg-primary/12" : "hover:bg-accent"
+                        }`}
+                        onClick={() => toggleMember(skill.id)}
                       >
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={(v) => toggleMember(skill.id, !!v)}
-                          className="mt-0.5"
-                        />
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">{skill.name}</div>
+                          <div className={`text-sm font-medium truncate ${checked ? "text-primary" : ""}`}>
+                            {skill.name}
+                          </div>
                           {skill.description && (
                             <div className="text-xs text-muted-foreground truncate">
                               {skill.description}
                             </div>
                           )}
                         </div>
-                      </label>
+                      </button>
                     );
                   })
                 )}
