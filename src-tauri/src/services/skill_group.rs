@@ -1,11 +1,11 @@
 //! SkillGroup 业务逻辑层
 
-use crate::app_config::AppType;
 use crate::database::dao::skill_groups::{SkillGroup, SkillGroupApps};
 use crate::database::Database;
 use crate::services::skill::SkillService;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
+use std::collections::HashSet;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -53,68 +53,38 @@ impl SkillGroupService {
         Ok(group)
     }
 
-    pub fn activate(db: &Arc<Database>, group_id: &str) -> Result<()> {
-        let group = db
-            .get_skill_group(group_id)?
+    /// 设置单个分组的全局激活状态，并重新同步全局 skills 目录
+    pub fn set_active(db: &Arc<Database>, group_id: &str, active: bool) -> Result<()> {
+        db.get_skill_group(group_id)?
             .ok_or_else(|| anyhow!("分组不存在: {group_id}"))?;
-
-        let member_ids = db.get_group_member_ids(group_id)?;
-
-        // 1. 保存当前所有 skill 的 enabled_* 快照（覆盖旧快照）
-        db.save_skill_group_snapshot()?;
-
-        // 2. 收集分组开启的 app 列表
-        let mut enabled_apps: Vec<AppType> = Vec::new();
-        if group.apps.claude { enabled_apps.push(AppType::Claude); }
-        if group.apps.codex { enabled_apps.push(AppType::Codex); }
-        if group.apps.gemini { enabled_apps.push(AppType::Gemini); }
-        if group.apps.opencode { enabled_apps.push(AppType::OpenCode); }
-        if group.apps.hermes { enabled_apps.push(AppType::Hermes); }
-
-        // 3. 先禁用所有 skill（文件系统 + 数据库）
-        SkillService::disable_all_skills_with_db(db)?;
-
-        // 4. 按分组 app 开关启用组内 skill（文件系统 + 数据库）
-        let sync_errors = SkillService::enable_skills_by_ids_for_apps_with_db(db, &member_ids, &enabled_apps)?;
-
-        // 5. 更新 is_active（无论部分失败都标记激活）
-        db.set_skill_group_active(group_id, true)?;
-
-        if !sync_errors.is_empty() {
-            return Err(anyhow!(
-                "分组已激活，但以下 Skill 同步失败（可手动重新启用）：{}",
-                sync_errors.join("、")
-            ));
-        }
-
-        Ok(())
+        db.set_skill_group_active(group_id, active)?;
+        Self::sync_active_groups_to_global(db)
     }
 
-    pub fn deactivate_all(db: &Arc<Database>) -> Result<()> {
-        // 从快照恢复所有 skill 的 enabled_* 状态（同时更新数据库、清空快照）
-        let snapshot = db.restore_skill_group_snapshot()?;
+    /// 计算所有激活分组的成员 skill 并集，全量同步到全局 app 目录
+    pub fn sync_active_groups_to_global(db: &Arc<Database>) -> Result<()> {
+        let active_group_ids = db.get_active_skill_group_ids().map_err(|e| anyhow!("{e}"))?;
 
-        if snapshot.is_empty() {
-            // 没有快照说明从未激活过分组，仅清除标记，不操作文件系统
-            db.clear_all_skill_group_active()?;
-            return Ok(());
+        let mut skill_ids: HashSet<String> = HashSet::new();
+        for gid in &active_group_ids {
+            let members = db.get_group_member_ids(gid).map_err(|e| anyhow!("{e}"))?;
+            skill_ids.extend(members);
         }
 
-        // 先清空所有文件系统链接
+        // 先禁用所有 skill（只操作文件系统，不改数据库 enabled_*）
         SkillService::disable_all_skills(db)?;
 
-        // 按恢复后的状态重新同步文件系统（db.get_installed_skill 只查一次）
-        for (id, apps) in &snapshot {
-            if let Ok(Some(skill)) = db.get_installed_skill(id) {
-                for app in apps.enabled_apps() {
+        // 按 skill 自身的 per-app 开关重新启用并集中的 skill
+        for skill_id in &skill_ids {
+            if let Ok(Some(skill)) = db.get_installed_skill(skill_id) {
+                for app in skill.apps.enabled_apps() {
                     if let Err(e) = SkillService::sync_to_app_dir(&skill.directory, &app) {
-                        log::warn!("deactivate: 恢复 skill {} to {:?} 失败: {e}", skill.name, app);
+                        log::warn!("sync_global: skill {} to {:?} 失败: {e}", skill.name, app);
                     }
                 }
             }
         }
 
-        db.clear_all_skill_group_active()?;
         Ok(())
     }
 }
