@@ -1,20 +1,20 @@
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Plus, Edit2, Trash2, Play, Pause, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AppToggleGroup } from "@/components/common/AppToggleGroup";
-import { SKILLS_APP_IDS } from "@/config/appConfig";
+import { Plus, Edit2, Trash2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SkillGroupEditDialog } from "./SkillGroupEditDialog";
+import { AppToggleGroup } from "@/components/common/AppToggleGroup";
+import { SKILLS_APP_IDS } from "@/config/appConfig";
 import {
   useSkillGroups,
   useCreateSkillGroup,
   useUpdateSkillGroup,
   useDeleteSkillGroup,
-  useActivateSkillGroup,
-  useDeactivateAllSkillGroups,
+  useSetGroupActive,
 } from "@/hooks/useSkillGroups";
 import type { SkillGroup, SkillGroupApps } from "@/lib/api/skills";
 
@@ -35,8 +35,7 @@ export function SkillGroupsPanel() {
   const createMutation = useCreateSkillGroup();
   const updateMutation = useUpdateSkillGroup();
   const deleteMutation = useDeleteSkillGroup();
-  const activateMutation = useActivateSkillGroup();
-  const deactivateMutation = useDeactivateAllSkillGroups();
+  const setActiveMutation = useSetGroupActive();
 
   const handleSave = async (params: { name: string; description?: string; apps: SkillGroupApps }) => {
     const { group } = editDialogState;
@@ -65,15 +64,9 @@ export function SkillGroupsPanel() {
     }
   };
 
-  const handleActivate = async (group: SkillGroup) => {
+  const handleToggleActive = async (group: SkillGroup, checked: boolean) => {
     try {
-      if (group.isActive) {
-        await deactivateMutation.mutateAsync();
-        toast.success(t("skillGroups.deactivated", "已停用分组"));
-      } else {
-        await activateMutation.mutateAsync(group.id);
-        toast.success(t("skillGroups.activated", "已激活：{{name}}", { name: group.name }));
-      }
+      await setActiveMutation.mutateAsync({ id: group.id, active: checked });
     } catch (error) {
       toast.error(t("common.error", "操作失败"), { description: String(error) });
     }
@@ -119,12 +112,15 @@ export function SkillGroupsPanel() {
                   : "border-border-default"
               }`}
             >
+              <Checkbox
+                checked={group.isActive}
+                onCheckedChange={(v) => handleToggleActive(group, !!v)}
+                disabled={setActiveMutation.isPending}
+              />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className={`font-medium text-sm ${group.isActive ? "text-primary" : ""}`}>
-                    {group.name}
-                  </span>
-                </div>
+                <span className={`font-medium text-sm ${group.isActive ? "text-primary" : ""}`}>
+                  {group.name}
+                </span>
                 {group.description && (
                   <p className="text-xs text-muted-foreground mt-0.5 truncate">
                     {group.description}
@@ -137,29 +133,6 @@ export function SkillGroupsPanel() {
                 appIds={SKILLS_APP_IDS}
               />
               <div className="flex items-center gap-1 shrink-0">
-                {group.isActive ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs px-3"
-                    onClick={() => handleActivate(group)}
-                    disabled={deactivateMutation.isPending}
-                  >
-                    <Pause className="h-3 w-3 mr-1" />
-                    {t("skillGroups.deactivate", "停用")}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="h-7 text-xs px-3"
-                    onClick={() => handleActivate(group)}
-                    disabled={activateMutation.isPending}
-                  >
-                    <Play className="h-3 w-3 mr-1" />
-                    {t("skillGroups.activate", "激活")}
-                  </Button>
-                )}
                 <Button
                   variant="ghost"
                   size="icon"
