@@ -11,63 +11,126 @@ import {
   useCreateWorkspace,
   useUpdateWorkspace,
   useDeleteWorkspace,
-  useToggleGroupInWorkspace,
-  useWorkspaceActiveGroupIds,
+  useWorkspaceBindings,
+  useToggleWorkspaceGroup,
+  useToggleWorkspaceSkill,
 } from "@/hooks/useWorkspaces";
 import { useSkillGroups } from "@/hooks/useSkillGroups";
+import { useInstalledSkills } from "@/hooks/useSkills";
 import type { Workspace } from "@/lib/api/workspaces";
 
-function WorkspaceGroupList({ workspace }: { workspace: Workspace }) {
+function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
   const { t } = useTranslation();
   const { data: groups = [] } = useSkillGroups();
-  const { data: activeGroupIds = [] } = useWorkspaceActiveGroupIds(workspace.id);
-  const toggleMutation = useToggleGroupInWorkspace();
-  const [pendingGroupId, setPendingGroupId] = useState<string | null>(null);
+  const { data: skills = [] } = useInstalledSkills();
+  const { data: bindings } = useWorkspaceBindings(workspace.id);
+  const toggleGroupMutation = useToggleWorkspaceGroup();
+  const toggleSkillMutation = useToggleWorkspaceSkill();
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const handleToggle = async (groupId: string, checked: boolean) => {
-    setPendingGroupId(groupId);
+  const boundGroupIds = new Set(bindings?.groupIds ?? []);
+  const boundSkillIds = new Set(bindings?.skillIds ?? []);
+
+  const handleToggleGroup = async (groupId: string, checked: boolean) => {
+    setPendingId(groupId);
     try {
-      await toggleMutation.mutateAsync({ workspaceId: workspace.id, groupId, active: checked });
+      await toggleGroupMutation.mutateAsync({ workspaceId: workspace.id, groupId, active: checked });
     } catch (error) {
       toast.error(t("common.error", "操作失败"), { description: String(error) });
     } finally {
-      setPendingGroupId(null);
+      setPendingId(null);
     }
   };
 
-  if (groups.length === 0) {
-    return (
-      <div className="px-4 py-3 text-sm text-muted-foreground">
-        {t("workspaces.noGroupsAvailable", "还没有分组，请先在「分组」标签页创建分组")}
-      </div>
-    );
-  }
+  const handleToggleSkill = async (skillId: string, checked: boolean) => {
+    setPendingId(skillId);
+    try {
+      await toggleSkillMutation.mutateAsync({ workspaceId: workspace.id, skillId, active: checked });
+    } catch (error) {
+      toast.error(t("common.error", "操作失败"), { description: String(error) });
+    } finally {
+      setPendingId(null);
+    }
+  };
 
   return (
-    <div className="px-4 pb-3 space-y-1">
-      {groups.map((group) => {
-        const checked = activeGroupIds.includes(group.id);
-        return (
-          <label
-            key={group.id}
-            className="flex items-center gap-2 cursor-pointer rounded px-1 py-1.5 hover:bg-accent"
-          >
-            <Checkbox
-              checked={checked}
-              onCheckedChange={(v) => handleToggle(group.id, !!v)}
-              disabled={pendingGroupId === group.id}
-            />
-            <span className={`text-sm ${checked ? "text-primary font-medium" : ""}`}>
-              {group.name}
-            </span>
-            {group.description && (
-              <span className="text-xs text-muted-foreground truncate flex-1">
-                {group.description}
-              </span>
-            )}
-          </label>
-        );
-      })}
+    <div className="border-t border-border-default bg-muted/20 px-4 py-3 space-y-3">
+      {groups.length > 0 && (
+        <div>
+          <div className="text-xs font-medium text-muted-foreground mb-1.5">
+            {t("workspaces.bindGroups", "绑定分组")}
+          </div>
+          <div className="space-y-1">
+            {groups.map((group) => {
+              const checked = boundGroupIds.has(group.id);
+              return (
+                <label
+                  key={group.id}
+                  className="flex items-center gap-2 cursor-pointer rounded px-1 py-1.5 hover:bg-accent"
+                >
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={(v) => handleToggleGroup(group.id, !!v)}
+                    disabled={pendingId === group.id}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium">{group.name}</div>
+                    {group.description && (
+                      <div className="text-xs text-muted-foreground truncate">{group.description}</div>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {t("skillGroups.memberCount", "{{count}} 个 Skill", { count: group.memberIds.length })}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {skills.length > 0 && (
+        <div>
+          <div className="text-xs font-medium text-muted-foreground mb-1.5">
+            {t("workspaces.bindSkills", "单独绑定 Skill")}
+          </div>
+          <div className="space-y-1">
+            {skills.map((skill) => {
+              const checked = boundSkillIds.has(skill.id);
+              return (
+                <label
+                  key={skill.id}
+                  className="flex items-center gap-2 cursor-pointer rounded px-1 py-1.5 hover:bg-accent"
+                >
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={(v) => handleToggleSkill(skill.id, !!v)}
+                    disabled={pendingId === skill.id}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm">{skill.name}</div>
+                    {skill.description && (
+                      <div className="text-xs text-muted-foreground truncate">{skill.description}</div>
+                    )}
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {groups.length === 0 && skills.length === 0 && (
+        <div className="text-sm text-muted-foreground text-center py-2">
+          {t("workspaces.noSkillsOrGroups", "还没有分组或 Skill，请先安装")}
+        </div>
+      )}
+
+      {bindings && (
+        <div className="text-xs text-muted-foreground pt-1 border-t border-border-default">
+          {t("workspaces.totalSkills", "共 {{count}} 个 Skill 将被同步", { count: bindings.totalSkillCount })}
+        </div>
+      )}
     </div>
   );
 }
@@ -90,6 +153,9 @@ export function WorkspacesPanel() {
   const createMutation = useCreateWorkspace();
   const updateMutation = useUpdateWorkspace();
   const deleteMutation = useDeleteWorkspace();
+
+  const userLevelWs = workspaces.find((ws) => ws.isUserLevel);
+  const projectWorkspaces = workspaces.filter((ws) => !ws.isUserLevel);
 
   const handleSave = async (params: { name: string; path: string }) => {
     try {
@@ -130,6 +196,66 @@ export function WorkspacesPanel() {
     );
   }
 
+  const renderWorkspace = (ws: Workspace, isUserLevel: boolean) => {
+    const expanded = expandedId === ws.id;
+    return (
+      <div
+        key={ws.id}
+        className={`rounded-lg border overflow-hidden ${
+          isUserLevel ? "border-primary/30 bg-primary/5" : "border-border-default"
+        }`}
+      >
+        <div
+          className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-accent/50 select-none"
+          onClick={() => toggleExpand(ws.id)}
+        >
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-sm flex items-center gap-2">
+              {ws.name}
+              {isUserLevel && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-normal">
+                  {t("workspaces.userLevel", "用户级别")}
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground truncate mt-0.5">{ws.path}</div>
+          </div>
+          <div
+            className="flex items-center gap-1 shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {!isUserLevel && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => setEditState({ open: true, workspace: ws })}
+                >
+                  <Edit2 className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-destructive hover:text-destructive"
+                  onClick={() => setConfirmDelete({ open: true, workspace: ws })}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+        {expanded && <WorkspaceBindingsPanel workspace={ws} />}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -146,60 +272,15 @@ export function WorkspacesPanel() {
         </Button>
       </div>
 
-      {workspaces.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          {t("workspaces.empty", "还没有工作空间，点击「新建工作空间」开始")}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {workspaces.map((ws) => {
-            const expanded = expandedId === ws.id;
-            return (
-              <div key={ws.id} className="rounded-lg border border-border-default overflow-hidden">
-                <div
-                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-accent/50 select-none"
-                  onClick={() => toggleExpand(ws.id)}
-                >
-                  {expanded
-                    ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                    : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                  }
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm">{ws.name}</div>
-                    <div className="text-xs text-muted-foreground truncate mt-0.5">{ws.path}</div>
-                  </div>
-                  <div
-                    className="flex items-center gap-1 shrink-0"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => setEditState({ open: true, workspace: ws })}
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive hover:text-destructive"
-                      onClick={() => setConfirmDelete({ open: true, workspace: ws })}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                {expanded && (
-                  <div className="border-t border-border-default bg-muted/20">
-                    <WorkspaceGroupList workspace={ws} />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <div className="space-y-2">
+        {userLevelWs && renderWorkspace(userLevelWs, true)}
+        {projectWorkspaces.map((ws) => renderWorkspace(ws, false))}
+        {!userLevelWs && projectWorkspaces.length === 0 && (
+          <div className="text-center py-12 text-muted-foreground text-sm">
+            {t("workspaces.empty", "还没有工作空间，点击「新建工作空间」开始")}
+          </div>
+        )}
+      </div>
 
       <WorkspaceEditDialog
         open={editState.open}
