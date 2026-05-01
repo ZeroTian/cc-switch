@@ -7,31 +7,38 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 
-pub struct ApplyResult {
-    pub synced: usize,
-    pub failed: Vec<String>,
-}
-
 pub struct WorkspaceSkillService;
 
 impl WorkspaceSkillService {
-    /// 将工作空间所有绑定分组的成员 Skill 同步到 <path>/.claude/skills/
-    pub fn apply(db: &Arc<Database>, workspace_id: &str) -> Result<ApplyResult> {
+    /// 切换工作空间中某分组的激活状态，并立即同步目录
+    pub fn toggle_group(
+        db: &Arc<Database>,
+        workspace_id: &str,
+        group_id: &str,
+        active: bool,
+    ) -> Result<()> {
+        db.get_workspace(workspace_id)
+            .map_err(|e| anyhow!("{e}"))?
+            .ok_or_else(|| anyhow!("工作空间不存在: {workspace_id}"))?;
+        db.toggle_workspace_group_active(workspace_id, group_id, active)
+            .map_err(|e| anyhow!("{e}"))?;
+        Self::sync_active_groups_to_workspace(db, workspace_id)
+    }
+
+    /// 计算工作空间已激活分组的成员 skill 并集，全量同步到 <path>/.claude/skills/
+    pub fn sync_active_groups_to_workspace(db: &Arc<Database>, workspace_id: &str) -> Result<()> {
         let ws = db
             .get_workspace(workspace_id)
             .map_err(|e| anyhow!("{e}"))?
             .ok_or_else(|| anyhow!("工作空间不存在: {workspace_id}"))?;
 
-        let group_ids = db
-            .get_workspace_group_ids(workspace_id)
+        let active_group_ids = db
+            .get_workspace_active_group_ids(workspace_id)
             .map_err(|e| anyhow!("{e}"))?;
 
-        // 收集所有分组成员 skill_id（去重）
         let mut skill_ids: HashSet<String> = HashSet::new();
-        for group_id in &group_ids {
-            let members = db
-                .get_group_member_ids(group_id)
-                .map_err(|e| anyhow!("{e}"))?;
+        for gid in &active_group_ids {
+            let members = db.get_group_member_ids(gid).map_err(|e| anyhow!("{e}"))?;
             skill_ids.extend(members);
         }
 
@@ -39,70 +46,73 @@ impl WorkspaceSkillService {
         std::fs::create_dir_all(&target_skills_dir)
             .map_err(|e| anyhow!("创建目录失败 {}: {e}", target_skills_dir.display()))?;
 
-        let ssot_dir = SkillService::get_ssot_dir()?;
+        // 清空目录中现有 symlink（全量替换）
+        Self::clear_skills_dir(&target_skills_dir)?;
 
-        let mut synced = 0usize;
-        let mut failed: Vec<String> = Vec::new();
+        let ssot_dir = SkillService::get_ssot_dir()?;
 
         for skill_id in &skill_ids {
             match db.get_installed_skill(skill_id) {
                 Ok(Some(skill)) => {
                     let source = ssot_dir.join(&skill.directory);
                     if !source.exists() {
-                        log::warn!("apply_workspace: SSOT skill {} 不存在，跳过", skill.name);
-                        failed.push(skill.name.clone());
+                        log::warn!("sync_workspace: SSOT skill {} 不存在", skill.name);
                         continue;
                     }
                     let dest = target_skills_dir.join(&skill.directory);
-                    // dangling symlink：metadata 存在但 target 不存在，修复它
-                    if dest.symlink_metadata().is_ok() && !dest.exists() {
-                        log::info!("apply_workspace: 修复 dangling symlink {}", skill.name);
-                        let _ = std::fs::remove_dir_all(&dest);
-                        let _ = std::fs::remove_file(&dest);
-                    } else if dest.exists() {
-                        // 正常存在，跳过
-                        synced += 1;
-                        continue;
-                    }
                     match Self::create_symlink(&source, &dest) {
-                        Ok(()) => synced += 1,
+                        Ok(()) => {}
                         Err(e) => {
-                            log::warn!("apply_workspace: symlink skill {} 失败: {e}，尝试复制", skill.name);
-                            // 清理可能存在的残留状态，确保复制操作干净
+                            log::warn!("sync_workspace: symlink {} 失败: {e}", skill.name);
                             let _ = std::fs::remove_dir_all(&dest);
-                            match Self::copy_dir(&source, &dest) {
-                                Ok(()) => synced += 1,
-                                Err(e2) => {
-                                    log::warn!("apply_workspace: 复制 skill {} 失败: {e2}", skill.name);
-                                    failed.push(skill.name.clone());
-                                }
+                            if let Err(e2) = Self::copy_dir(&source, &dest) {
+                                log::warn!("sync_workspace: copy {} 失败: {e2}", skill.name);
                             }
                         }
                     }
                 }
-                Ok(None) => {
-                    log::warn!("apply_workspace: skill {skill_id} 不存在，跳过");
-                    failed.push(skill_id.clone());
-                }
-                Err(e) => {
-                    log::warn!("apply_workspace: 读取 skill {skill_id} 失败: {e}");
-                    failed.push(skill_id.clone());
-                }
+                Ok(None) => log::warn!("sync_workspace: skill {skill_id} 不存在"),
+                Err(e) => log::warn!("sync_workspace: 读取 skill {skill_id} 失败: {e}"),
             }
         }
 
-        Ok(ApplyResult { synced, failed })
+        Ok(())
+    }
+
+    /// 当分组成员变化时，同步所有受影响的工作空间
+    pub fn sync_workspaces_for_group(db: &Arc<Database>, group_id: &str) -> Result<()> {
+        let workspace_ids = db
+            .get_workspaces_with_active_group(group_id)
+            .map_err(|e| anyhow!("{e}"))?;
+        for workspace_id in &workspace_ids {
+            if let Err(e) = Self::sync_active_groups_to_workspace(db, workspace_id) {
+                log::warn!("sync_workspaces_for_group: 工作空间 {workspace_id} 同步失败: {e}");
+            }
+        }
+        Ok(())
+    }
+
+    fn clear_skills_dir(dir: &Path) -> Result<()> {
+        if !dir.exists() {
+            return Ok(());
+        }
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_symlink() || path.is_dir() {
+                let _ = std::fs::remove_dir_all(&path);
+            } else {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+        Ok(())
     }
 
     fn create_symlink(source: &Path, dest: &Path) -> Result<()> {
         #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink(source, dest)?;
-        }
+        { std::os::unix::fs::symlink(source, dest)?; }
         #[cfg(windows)]
-        {
-            std::os::windows::fs::symlink_dir(source, dest)?;
-        }
+        { std::os::windows::fs::symlink_dir(source, dest)?; }
         Ok(())
     }
 
