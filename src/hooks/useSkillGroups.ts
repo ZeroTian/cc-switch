@@ -42,6 +42,9 @@ export function useDeleteSkillGroup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => skillGroupsApi.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["skillGroups"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["skillGroups"] });
+      qc.invalidateQueries({ queryKey: ["workspaces", "bindings"] });
+    },
   });
 }
