@@ -9,11 +9,6 @@ export interface Workspace {
   groupIds: string[];
 }
 
-export interface WorkspaceApplyResult {
-  synced: number;
-  failed: string[];
-}
-
 export const workspacesApi = {
   getAll: (): Promise<Workspace[]> => invoke("get_workspaces"),
 
@@ -34,6 +29,9 @@ export const workspacesApi = {
   getGroupIds: (workspaceId: string): Promise<string[]> =>
     invoke("get_workspace_group_ids", { workspaceId }),
 
-  apply: (workspaceId: string): Promise<WorkspaceApplyResult> =>
-    invoke("apply_workspace", { workspaceId }),
+  toggleGroupActive: (workspaceId: string, groupId: string, active: boolean): Promise<void> =>
+    invoke("toggle_group_in_workspace", { workspaceId, groupId, active }),
+
+  getActiveGroupIds: (workspaceId: string): Promise<string[]> =>
+    invoke("get_workspace_active_group_ids", { workspaceId }),
 };
