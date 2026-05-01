@@ -23,6 +23,7 @@ pub fn create_workspace(
         id: Uuid::new_v4().to_string(),
         name,
         path,
+        is_user_level: false,
         created_at: now,
         updated_at: now,
         group_ids: vec![],

@@ -11,6 +11,7 @@ pub struct Workspace {
     pub id: String,
     pub name: String,
     pub path: String,
+    pub is_user_level: bool,
     pub created_at: i64,
     pub updated_at: i64,
     #[serde(default)]
@@ -23,8 +24,9 @@ impl Database {
             id: row.get(0)?,
             name: row.get(1)?,
             path: row.get(2)?,
-            created_at: row.get(3)?,
-            updated_at: row.get(4)?,
+            is_user_level: row.get::<_, i64>(3)? != 0,
+            created_at: row.get(4)?,
+            updated_at: row.get(5)?,
             group_ids: vec![],
         })
     }
@@ -34,7 +36,7 @@ impl Database {
 
         let mut workspaces: Vec<Workspace> = {
             let mut stmt = conn
-                .prepare("SELECT id, name, path, created_at, updated_at FROM workspaces ORDER BY name ASC")
+                .prepare("SELECT id, name, path, is_user_level, created_at, updated_at FROM workspaces ORDER BY created_at ASC")
                 .map_err(|e| AppError::Database(e.to_string()))?;
             let result = stmt
                 .query_map([], |row| Self::row_to_workspace(row))
@@ -69,10 +71,23 @@ impl Database {
     pub fn get_workspace(&self, id: &str) -> Result<Option<Workspace>, AppError> {
         let conn = lock_conn!(self.conn);
         let mut stmt = conn
-            .prepare("SELECT id, name, path, created_at, updated_at FROM workspaces WHERE id=?1")
+            .prepare(
+                "SELECT id, name, path, is_user_level, created_at, updated_at
+                 FROM workspaces WHERE id = ?1",
+            )
             .map_err(|e| AppError::Database(e.to_string()))?;
-        match stmt.query_row([id], |row| Self::row_to_workspace(row)) {
-            Ok(ws) => Ok(Some(ws)),
+        match stmt.query_row([id], |row| {
+            Ok(Workspace {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                path: row.get(2)?,
+                is_user_level: row.get::<_, i64>(3)? != 0,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+                group_ids: vec![],
+            })
+        }) {
+            Ok(w) => Ok(Some(w)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(AppError::Database(e.to_string())),
         }
@@ -81,8 +96,8 @@ impl Database {
     pub fn create_workspace(&self, ws: &Workspace) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
         conn.execute(
-            "INSERT INTO workspaces (id, name, path, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![ws.id, ws.name, ws.path, ws.created_at, ws.updated_at],
+            "INSERT INTO workspaces (id, name, path, is_user_level, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![ws.id, ws.name, ws.path, ws.is_user_level as i64, ws.created_at, ws.updated_at],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
@@ -182,5 +197,76 @@ impl Database {
             .map_err(|e| AppError::Database(e.to_string()))?;
         rows.map(|r| r.map_err(|e| AppError::Database(e.to_string())))
             .collect()
+    }
+
+    // workspace_skill_bindings
+
+    pub fn get_workspace_skill_bindings(&self, workspace_id: &str) -> Result<Vec<String>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare("SELECT skill_id FROM workspace_skill_bindings WHERE workspace_id = ?1")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let rows = stmt
+            .query_map([workspace_id], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        rows.map(|r| r.map_err(|e| AppError::Database(e.to_string()))).collect()
+    }
+
+    pub fn toggle_workspace_skill(&self, workspace_id: &str, skill_id: &str, active: bool) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        if active {
+            conn.execute(
+                "INSERT OR IGNORE INTO workspace_skill_bindings (workspace_id, skill_id) VALUES (?1, ?2)",
+                params![workspace_id, skill_id],
+            )
+        } else {
+            conn.execute(
+                "DELETE FROM workspace_skill_bindings WHERE workspace_id = ?1 AND skill_id = ?2",
+                params![workspace_id, skill_id],
+            )
+        }
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    // workspace_group_bindings
+
+    pub fn get_workspace_group_bindings(&self, workspace_id: &str) -> Result<Vec<String>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare("SELECT group_id FROM workspace_group_bindings WHERE workspace_id = ?1")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let rows = stmt
+            .query_map([workspace_id], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        rows.map(|r| r.map_err(|e| AppError::Database(e.to_string()))).collect()
+    }
+
+    pub fn toggle_workspace_group(&self, workspace_id: &str, group_id: &str, active: bool) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        if active {
+            conn.execute(
+                "INSERT OR IGNORE INTO workspace_group_bindings (workspace_id, group_id) VALUES (?1, ?2)",
+                params![workspace_id, group_id],
+            )
+        } else {
+            conn.execute(
+                "DELETE FROM workspace_group_bindings WHERE workspace_id = ?1 AND group_id = ?2",
+                params![workspace_id, group_id],
+            )
+        }
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn get_workspaces_with_group_binding(&self, group_id: &str) -> Result<Vec<String>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare("SELECT workspace_id FROM workspace_group_bindings WHERE group_id = ?1")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let rows = stmt
+            .query_map([group_id], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        rows.map(|r| r.map_err(|e| AppError::Database(e.to_string()))).collect()
     }
 }
