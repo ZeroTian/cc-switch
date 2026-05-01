@@ -14,8 +14,6 @@ pub struct Workspace {
     pub is_user_level: bool,
     pub created_at: i64,
     pub updated_at: i64,
-    #[serde(default)]
-    pub group_ids: Vec<String>,
 }
 
 impl Database {
@@ -27,45 +25,20 @@ impl Database {
             is_user_level: row.get::<_, i64>(3)? != 0,
             created_at: row.get(4)?,
             updated_at: row.get(5)?,
-            group_ids: vec![],
         })
     }
 
     pub fn get_all_workspaces(&self) -> Result<Vec<Workspace>, AppError> {
         let conn = lock_conn!(self.conn);
-
-        let mut workspaces: Vec<Workspace> = {
-            let mut stmt = conn
-                .prepare("SELECT id, name, path, is_user_level, created_at, updated_at FROM workspaces ORDER BY created_at ASC")
-                .map_err(|e| AppError::Database(e.to_string()))?;
-            let result = stmt
-                .query_map([], |row| Self::row_to_workspace(row))
-                .map_err(|e| AppError::Database(e.to_string()))?
-                .map(|r| r.map_err(|e| AppError::Database(e.to_string())))
-                .collect::<Result<Vec<_>, _>>()?;
-            result
-        };
-
-        let pairs: Vec<(String, String)> = {
-            let mut stmt = conn
-                .prepare("SELECT workspace_id, group_id FROM workspace_groups ORDER BY workspace_id")
-                .map_err(|e| AppError::Database(e.to_string()))?;
-            let result = stmt
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-                .map_err(|e| AppError::Database(e.to_string()))?
-                .map(|r| r.map_err(|e| AppError::Database(e.to_string())))
-                .collect::<Result<Vec<_>, _>>()?;
-            result
-        };
-
-        for ws in &mut workspaces {
-            ws.group_ids = pairs
-                .iter()
-                .filter(|(wid, _)| wid == &ws.id)
-                .map(|(_, gid)| gid.clone())
-                .collect();
-        }
-        Ok(workspaces)
+        let mut stmt = conn
+            .prepare("SELECT id, name, path, is_user_level, created_at, updated_at FROM workspaces ORDER BY created_at ASC")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let result = stmt
+            .query_map([], |row| Self::row_to_workspace(row))
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .map(|r| r.map_err(|e| AppError::Database(e.to_string())))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(result)
     }
 
     pub fn get_workspace(&self, id: &str) -> Result<Option<Workspace>, AppError> {
@@ -108,85 +81,6 @@ impl Database {
         conn.execute("DELETE FROM workspaces WHERE id=?1", [id])
             .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
-    }
-
-    pub fn add_group_to_workspace(&self, workspace_id: &str, group_id: &str) -> Result<(), AppError> {
-        let conn = lock_conn!(self.conn);
-        conn.execute(
-            "INSERT OR IGNORE INTO workspace_groups (workspace_id, group_id) VALUES (?1, ?2)",
-            params![workspace_id, group_id],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-        Ok(())
-    }
-
-    pub fn remove_group_from_workspace(&self, workspace_id: &str, group_id: &str) -> Result<(), AppError> {
-        let conn = lock_conn!(self.conn);
-        conn.execute(
-            "DELETE FROM workspace_groups WHERE workspace_id=?1 AND group_id=?2",
-            params![workspace_id, group_id],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-        Ok(())
-    }
-
-    pub fn get_workspace_group_ids(&self, workspace_id: &str) -> Result<Vec<String>, AppError> {
-        let conn = lock_conn!(self.conn);
-        let mut stmt = conn
-            .prepare("SELECT group_id FROM workspace_groups WHERE workspace_id=?1")
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        let rows = stmt
-            .query_map([workspace_id], |row| row.get::<_, String>(0))
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        rows.map(|r| r.map_err(|e| AppError::Database(e.to_string())))
-            .collect()
-    }
-
-    pub fn toggle_workspace_group_active(
-        &self,
-        workspace_id: &str,
-        group_id: &str,
-        active: bool,
-    ) -> Result<(), AppError> {
-        let conn = lock_conn!(self.conn);
-        if active {
-            conn.execute(
-                "INSERT OR IGNORE INTO workspace_group_active (workspace_id, group_id) VALUES (?1, ?2)",
-                rusqlite::params![workspace_id, group_id],
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        } else {
-            conn.execute(
-                "DELETE FROM workspace_group_active WHERE workspace_id=?1 AND group_id=?2",
-                rusqlite::params![workspace_id, group_id],
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        }
-        Ok(())
-    }
-
-    pub fn get_workspace_active_group_ids(&self, workspace_id: &str) -> Result<Vec<String>, AppError> {
-        let conn = lock_conn!(self.conn);
-        let mut stmt = conn
-            .prepare("SELECT group_id FROM workspace_group_active WHERE workspace_id=?1")
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        let rows = stmt
-            .query_map([workspace_id], |row| row.get::<_, String>(0))
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        rows.map(|r| r.map_err(|e| AppError::Database(e.to_string())))
-            .collect()
-    }
-
-    pub fn get_workspaces_with_active_group(&self, group_id: &str) -> Result<Vec<String>, AppError> {
-        let conn = lock_conn!(self.conn);
-        let mut stmt = conn
-            .prepare("SELECT workspace_id FROM workspace_group_active WHERE group_id=?1")
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        let rows = stmt
-            .query_map([group_id], |row| row.get::<_, String>(0))
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        rows.map(|r| r.map_err(|e| AppError::Database(e.to_string())))
-            .collect()
     }
 
     // workspace_skill_bindings

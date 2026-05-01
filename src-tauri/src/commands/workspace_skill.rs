@@ -29,7 +29,6 @@ pub fn create_workspace(
         is_user_level: false,
         created_at: now,
         updated_at: now,
-        group_ids: vec![],
     };
     app_state.db.create_workspace(&ws).map_err(|e| e.to_string())?;
     Ok(ws)
