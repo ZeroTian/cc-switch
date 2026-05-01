@@ -41,6 +41,18 @@ pub fn delete_skill_group(id: String, app_state: State<'_, AppState>) -> Result<
     app_state.db.delete_skill_group(&id).map_err(|e| e.to_string())
 }
 
+/// 批量更新分组排序（传入有序 id 列表，按下标写入 sort_index）
+#[tauri::command]
+pub fn reorder_skill_groups(
+    ordered_ids: Vec<String>,
+    app_state: State<'_, AppState>,
+) -> Result<(), String> {
+    app_state
+        .db
+        .reorder_skill_groups(&ordered_ids)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn get_group_member_ids(
     group_id: String,

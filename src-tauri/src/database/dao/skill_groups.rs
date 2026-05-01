@@ -110,6 +110,18 @@ impl Database {
         Ok(())
     }
 
+    pub fn reorder_skill_groups(&self, ordered_ids: &[String]) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        for (i, id) in ordered_ids.iter().enumerate() {
+            conn.execute(
+                "UPDATE skill_groups SET sort_index = ?1 WHERE id = ?2",
+                params![i as i64, id],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        }
+        Ok(())
+    }
+
     pub fn delete_skill_group(&self, id: &str) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
         conn.execute("DELETE FROM skill_groups WHERE id=?1", [id])

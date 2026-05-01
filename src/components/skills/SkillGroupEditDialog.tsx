@@ -81,32 +81,34 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg" zIndex="top">
-        <DialogHeader>
+      <DialogContent className="max-w-lg flex flex-col max-h-[80vh]" zIndex="top">
+        <DialogHeader className="shrink-0">
           <DialogTitle>
             {group ? t("skillGroups.edit", "编辑分组") : t("skillGroups.create", "新建分组")}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 min-h-0">
-          <Input
-            placeholder={t("skillGroups.namePlaceholder", "分组名称")}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Textarea
-            placeholder={t("skillGroups.descriptionPlaceholder", "描述（可选）")}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={2}
-          />
+        <div className="flex flex-col min-h-0 px-6 py-4 gap-3 overflow-hidden">
+          <div className="shrink-0 space-y-3">
+            <Input
+              placeholder={t("skillGroups.namePlaceholder", "分组名称")}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <Textarea
+              placeholder={t("skillGroups.descriptionPlaceholder", "描述（可选）")}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+            />
+          </div>
 
           {group && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">
+            <div className="flex flex-col min-h-0 gap-2">
+              <div className="text-sm font-medium shrink-0">
                 {t("skillGroups.selectSkills", "选择 Skill")}
               </div>
-              <div className="relative">
+              <div className="relative shrink-0">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder={t("skillGroups.searchSkills", "搜索 Skill")}
@@ -115,7 +117,7 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
                   className="pl-8"
                 />
               </div>
-              <div className="space-y-0.5 border rounded-md p-1.5 max-h-60 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto border rounded-md p-1.5 min-h-0">
                 {filtered.length === 0 ? (
                   <div className="text-sm text-muted-foreground py-2 text-center">
                     {t("skillGroups.noSkills", "没有已安装的 Skill")}

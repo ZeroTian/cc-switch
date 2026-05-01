@@ -30,4 +30,7 @@ export const skillGroupsApi = {
 
   getMemberIds: (groupId: string): Promise<string[]> =>
     invoke("get_group_member_ids", { groupId }),
+
+  reorder: (orderedIds: string[]): Promise<void> =>
+    invoke("reorder_skill_groups", { orderedIds }),
 };

@@ -38,6 +38,14 @@ export function useUpdateSkillGroup() {
   });
 }
 
+export function useReorderSkillGroups() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (orderedIds: string[]) => skillGroupsApi.reorder(orderedIds),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["skillGroups"] }),
+  });
+}
+
 export function useDeleteSkillGroup() {
   const qc = useQueryClient();
   return useMutation({

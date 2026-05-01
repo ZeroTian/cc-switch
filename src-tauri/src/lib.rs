@@ -1168,6 +1168,7 @@ pub fn run() {
             commands::create_skill_group,
             commands::update_skill_group,
             commands::delete_skill_group,
+            commands::reorder_skill_groups,
             commands::get_group_member_ids,
             // Workspace skill management
             commands::get_workspaces,
