@@ -51,8 +51,29 @@ export function useRemoveGroupFromWorkspace() {
   });
 }
 
-export function useApplyWorkspace() {
+export function useToggleGroupInWorkspace() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (workspaceId: string) => workspacesApi.apply(workspaceId),
+    mutationFn: ({
+      workspaceId,
+      groupId,
+      active,
+    }: {
+      workspaceId: string;
+      groupId: string;
+      active: boolean;
+    }) => workspacesApi.toggleGroupActive(workspaceId, groupId, active),
+    onSuccess: (_data, { workspaceId }) => {
+      qc.invalidateQueries({ queryKey: ["workspaces", "activeGroups", workspaceId] });
+    },
+  });
+}
+
+export function useWorkspaceActiveGroupIds(workspaceId: string | null) {
+  return useQuery({
+    queryKey: ["workspaces", "activeGroups", workspaceId],
+    queryFn: () => workspacesApi.getActiveGroupIds(workspaceId!),
+    enabled: !!workspaceId,
+    staleTime: Infinity,
   });
 }
