@@ -202,12 +202,11 @@ function SortableWorkspaceItem({
   ws: Workspace;
   renderCard: (ws: Workspace, opts?: { dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>; style?: React.CSSProperties; ref?: React.Ref<HTMLDivElement> }) => React.ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({ id: ws.id });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition,
     opacity: isDragging ? 0.5 : 1,
   };
 
