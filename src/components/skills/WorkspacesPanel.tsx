@@ -35,6 +35,17 @@ function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
   const boundGroupCount = groups.filter((g) => boundGroupIds.has(g.id)).length;
   const boundSkillCount = skills.filter((s) => boundSkillIds.has(s.id)).length;
 
+  const sortedGroups = [...groups].sort((a, b) => {
+    const aChecked = boundGroupIds.has(a.id) ? 0 : 1;
+    const bChecked = boundGroupIds.has(b.id) ? 0 : 1;
+    return aChecked - bChecked;
+  });
+  const sortedSkills = [...skills].sort((a, b) => {
+    const aChecked = boundSkillIds.has(a.id) ? 0 : 1;
+    const bChecked = boundSkillIds.has(b.id) ? 0 : 1;
+    return aChecked - bChecked;
+  });
+
   const handleToggleGroup = async (groupId: string, checked: boolean) => {
     setPendingId(groupId);
     try {
@@ -79,7 +90,7 @@ function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
           </button>
           {groupsExpanded && (
             <div className="border-t border-border-default px-2 py-1 space-y-0.5">
-              {groups.map((group) => {
+              {sortedGroups.map((group) => {
                 const checked = boundGroupIds.has(group.id);
                 return (
                   <label
@@ -128,7 +139,7 @@ function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
           </button>
           {skillsExpanded && (
             <div className="border-t border-border-default px-2 py-1 space-y-0.5">
-              {skills.map((skill) => {
+              {sortedSkills.map((skill) => {
                 const checked = boundSkillIds.has(skill.id);
                 return (
                   <label
