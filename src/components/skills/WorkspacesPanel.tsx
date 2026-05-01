@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Plus, Edit2, Trash2, FolderCheck, Loader2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Plus, Edit2, Trash2, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { WorkspaceEditDialog } from "./WorkspaceEditDialog";
@@ -10,13 +11,67 @@ import {
   useCreateWorkspace,
   useUpdateWorkspace,
   useDeleteWorkspace,
-  useApplyWorkspace,
+  useToggleGroupInWorkspace,
+  useWorkspaceActiveGroupIds,
 } from "@/hooks/useWorkspaces";
+import { useSkillGroups } from "@/hooks/useSkillGroups";
 import type { Workspace } from "@/lib/api/workspaces";
+
+function WorkspaceGroupList({ workspace }: { workspace: Workspace }) {
+  const { t } = useTranslation();
+  const { data: groups = [] } = useSkillGroups();
+  const { data: activeGroupIds = [] } = useWorkspaceActiveGroupIds(workspace.id);
+  const toggleMutation = useToggleGroupInWorkspace();
+
+  const handleToggle = async (groupId: string, checked: boolean) => {
+    try {
+      await toggleMutation.mutateAsync({ workspaceId: workspace.id, groupId, active: checked });
+    } catch (error) {
+      toast.error(t("common.error", "操作失败"), { description: String(error) });
+    }
+  };
+
+  if (groups.length === 0) {
+    return (
+      <div className="px-4 py-3 text-sm text-muted-foreground">
+        {t("workspaces.noGroupsAvailable", "还没有分组，请先在「分组」标签页创建分组")}
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 pb-3 space-y-1">
+      {groups.map((group) => {
+        const checked = activeGroupIds.includes(group.id);
+        return (
+          <label
+            key={group.id}
+            className="flex items-center gap-2 cursor-pointer rounded px-1 py-1.5 hover:bg-accent"
+          >
+            <Checkbox
+              checked={checked}
+              onCheckedChange={(v) => handleToggle(group.id, !!v)}
+              disabled={toggleMutation.isPending}
+            />
+            <span className={`text-sm ${checked ? "text-primary font-medium" : ""}`}>
+              {group.name}
+            </span>
+            {group.description && (
+              <span className="text-xs text-muted-foreground truncate flex-1">
+                {group.description}
+              </span>
+            )}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
 
 export function WorkspacesPanel() {
   const { t } = useTranslation();
   const { data: workspaces = [], isLoading } = useWorkspaces();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const [editState, setEditState] = useState<{
     open: boolean;
@@ -31,7 +86,6 @@ export function WorkspacesPanel() {
   const createMutation = useCreateWorkspace();
   const updateMutation = useUpdateWorkspace();
   const deleteMutation = useDeleteWorkspace();
-  const applyMutation = useApplyWorkspace();
 
   const handleSave = async (params: { name: string; path: string }) => {
     try {
@@ -53,32 +107,15 @@ export function WorkspacesPanel() {
     try {
       await deleteMutation.mutateAsync(confirmDelete.workspace.id);
       toast.success(t("workspaces.deleted", "工作空间已删除"));
+      if (expandedId === confirmDelete.workspace.id) setExpandedId(null);
       setConfirmDelete({ open: false, workspace: null });
     } catch (error) {
       toast.error(t("common.error", "操作失败"), { description: String(error) });
     }
   };
 
-  const handleApply = async (workspace: Workspace) => {
-    try {
-      const result = await applyMutation.mutateAsync(workspace.id);
-      if (result.failed.length > 0) {
-        toast.warning(t("workspaces.applyPartial", "部分同步完成"), {
-          description: t(
-            "workspaces.applyFailedList",
-            "{{synced}} 个成功，失败：{{failed}}",
-            { synced: result.synced, failed: result.failed.join("、") }
-          ),
-        });
-      } else {
-        toast.success(
-          t("workspaces.applySuccess", "已同步 {{count}} 个 Skill", { count: result.synced }),
-          { description: workspace.path }
-        );
-      }
-    } catch (error) {
-      toast.error(t("common.error", "操作失败"), { description: String(error) });
-    }
+  const toggleExpand = (id: string) => {
+    setExpandedId((prev) => (prev === id ? null : id));
   };
 
   if (isLoading) {
@@ -111,45 +148,52 @@ export function WorkspacesPanel() {
         </div>
       ) : (
         <div className="space-y-2">
-          {workspaces.map((ws) => (
-            <div key={ws.id} className="flex items-center gap-4 rounded-lg border px-4 py-3">
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm">{ws.name}</div>
-                <div className="text-xs text-muted-foreground truncate mt-0.5">{ws.path}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  {t("workspaces.groupCount", "{{count}} 个分组", { count: ws.groupIds.length })}
+          {workspaces.map((ws) => {
+            const expanded = expandedId === ws.id;
+            return (
+              <div key={ws.id} className="rounded-lg border border-border-default overflow-hidden">
+                <div
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-accent/50 select-none"
+                  onClick={() => toggleExpand(ws.id)}
+                >
+                  {expanded
+                    ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                    : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  }
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm">{ws.name}</div>
+                    <div className="text-xs text-muted-foreground truncate mt-0.5">{ws.path}</div>
+                  </div>
+                  <div
+                    className="flex items-center gap-1 shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => setEditState({ open: true, workspace: ws })}
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive hover:text-destructive"
+                      onClick={() => setConfirmDelete({ open: true, workspace: ws })}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
+                {expanded && (
+                  <div className="border-t border-border-default bg-muted/20">
+                    <WorkspaceGroupList workspace={ws} />
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="h-7 text-xs px-3"
-                  onClick={() => handleApply(ws)}
-                  disabled={applyMutation.isPending}
-                >
-                  <FolderCheck className="h-3 w-3 mr-1" />
-                  {t("workspaces.apply", "应用")}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => setEditState({ open: true, workspace: ws })}
-                >
-                  <Edit2 className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-destructive hover:text-destructive"
-                  onClick={() => setConfirmDelete({ open: true, workspace: ws })}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
