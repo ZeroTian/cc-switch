@@ -405,7 +405,7 @@ impl Database {
             "CREATE TABLE IF NOT EXISTS workspaces (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
-                path TEXT NOT NULL,
+                path TEXT NOT NULL UNIQUE,
                 created_at INTEGER NOT NULL DEFAULT 0,
                 updated_at INTEGER NOT NULL DEFAULT 0
             )",
@@ -524,6 +524,11 @@ impl Database {
                         log::info!("迁移数据库从 v13 到 v14（添加工作空间功能）");
                         Self::migrate_v13_to_v14(conn)?;
                         Self::set_user_version(conn, 14)?;
+                    }
+                    14 => {
+                        log::info!("迁移数据库从 v14 到 v15（workspaces.path 加唯一约束）");
+                        Self::migrate_v14_to_v15(conn)?;
+                        Self::set_user_version(conn, 15)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1358,6 +1363,23 @@ impl Database {
                 FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
                 FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE
             );",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))
+    }
+
+    fn migrate_v14_to_v15(conn: &Connection) -> Result<(), AppError> {
+        // 用 RECREATE 模式给 workspaces.path 加 UNIQUE 约束（SQLite 不支持 ALTER ADD UNIQUE）
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS workspaces_new (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL UNIQUE,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT OR IGNORE INTO workspaces_new SELECT id, name, path, created_at, updated_at FROM workspaces;
+            DROP TABLE workspaces;
+            ALTER TABLE workspaces_new RENAME TO workspaces;",
         )
         .map_err(|e| AppError::Database(e.to_string()))
     }
