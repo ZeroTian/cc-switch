@@ -19,6 +19,7 @@ pub mod session_usage_gemini;
 pub mod session_usage_opencode;
 pub mod skill;
 pub mod skill_group;
+pub mod workspace_skill;
 pub mod speedtest;
 pub mod sql_helpers;
 pub mod stream_check;
@@ -40,6 +41,8 @@ pub use proxy::ProxyService;
 pub use skill::{DiscoverableSkill, Skill, SkillRepo, SkillService};
 #[allow(unused_imports)]
 pub use skill_group::SkillGroupService;
+#[allow(unused_imports)]
+pub use workspace_skill::WorkspaceSkillService;
 pub use speedtest::{EndpointLatency, SpeedtestService};
 pub use usage_cache::UsageCache;
 #[allow(unused_imports)]
