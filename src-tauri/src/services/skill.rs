@@ -1347,30 +1347,21 @@ impl SkillService {
         Ok(restored_skill)
     }
 
-    /// 切换应用启用状态
-    ///
-    /// 启用：复制到应用目录
-    /// 禁用：从应用目录删除
+    /// 切换应用启用状态（只更新 apps 偏好，文件同步由工作空间触发）
     pub fn toggle_app(db: &Arc<Database>, id: &str, app: &AppType, enabled: bool) -> Result<()> {
-        // 获取当前 skill
         let mut skill = db
             .get_installed_skill(id)?
             .ok_or_else(|| anyhow!("Skill not found: {id}"))?;
 
-        // 更新状态
         skill.apps.set_enabled_for(app, enabled);
-
-        // 同步文件
-        if enabled {
-            Self::sync_to_app_dir(&skill.directory, app)?;
-        } else {
-            Self::remove_from_app(&skill.directory, app)?;
-        }
-
-        // 更新数据库
         db.update_skill_apps(id, &skill.apps)?;
 
         log::info!("Skill {} 的 {:?} 状态已更新为 {}", skill.name, app, enabled);
+
+        // 触发所有包含该 skill 的工作空间重新同步
+        if let Err(e) = crate::services::workspace_skill::WorkspaceSkillService::sync_workspaces_for_skill(db, id) {
+            log::warn!("toggle_app: 工作空间同步失败: {e}");
+        }
 
         Ok(())
     }

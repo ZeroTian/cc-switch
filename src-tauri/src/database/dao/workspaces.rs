@@ -153,4 +153,22 @@ impl Database {
             .map_err(|e| AppError::Database(e.to_string()))?;
         rows.map(|r| r.map_err(|e| AppError::Database(e.to_string()))).collect()
     }
+
+    /// 查询所有包含指定 skill 的工作空间（直绑 + 通过分组间接包含）
+    pub fn get_workspaces_containing_skill(&self, skill_id: &str) -> Result<Vec<String>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare(
+                "SELECT DISTINCT workspace_id FROM workspace_skill_bindings WHERE skill_id = ?1
+                 UNION
+                 SELECT DISTINCT wgb.workspace_id FROM workspace_group_bindings wgb
+                 JOIN skill_group_members sgm ON wgb.group_id = sgm.group_id
+                 WHERE sgm.skill_id = ?1",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let rows = stmt
+            .query_map([skill_id], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        rows.map(|r| r.map_err(|e| AppError::Database(e.to_string()))).collect()
+    }
 }

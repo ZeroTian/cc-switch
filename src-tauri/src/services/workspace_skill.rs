@@ -91,6 +91,18 @@ impl WorkspaceSkillService {
         Ok(())
     }
 
+    /// 当 skill 的 apps 配置变化时，同步所有包含该 skill 的工作空间
+    pub fn sync_workspaces_for_skill(db: &Arc<Database>, skill_id: &str) -> Result<()> {
+        let workspace_ids = db.get_workspaces_containing_skill(skill_id)
+            .map_err(|e| anyhow!("{e}"))?;
+        for workspace_id in &workspace_ids {
+            if let Err(e) = Self::sync_workspace(db, workspace_id) {
+                log::warn!("sync_workspaces_for_skill: 工作空间 {workspace_id} 同步失败: {e}");
+            }
+        }
+        Ok(())
+    }
+
     fn sync_skills_to_global(db: &Arc<Database>, skill_ids: &std::collections::HashSet<String>) -> Result<()> {
         SkillService::disable_all_skills(db)?;
         for skill_id in skill_ids {
