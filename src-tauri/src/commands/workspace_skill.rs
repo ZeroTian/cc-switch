@@ -47,11 +47,11 @@ pub fn update_workspace(
         .get_workspace(&id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("工作空间不存在: {id}"))?;
-    if ws.is_user_level && path.trim() != "~" {
-        return Err("用户级别空间路径不可修改".to_string());
-    }
     ws.name = name;
-    ws.path = path;
+    // 用户级别空间：path 由数据库维护，忽略调用方传入的值
+    if !ws.is_user_level {
+        ws.path = path;
+    }
     ws.updated_at = Utc::now().timestamp();
     app_state.db.update_workspace(&ws).map_err(|e| e.to_string())?;
     Ok(ws)
