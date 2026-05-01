@@ -4,34 +4,34 @@ export interface Workspace {
   id: string;
   name: string;
   path: string;
+  isUserLevel: boolean;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface WorkspaceBindings {
   groupIds: string[];
+  skillIds: string[];
+  totalSkillCount: number;
 }
 
 export const workspacesApi = {
   getAll: (): Promise<Workspace[]> => invoke("get_workspaces"),
 
   create: (params: { name: string; path: string }): Promise<Workspace> =>
-    invoke("create_workspace", { name: params.name, path: params.path }),
+    invoke("create_workspace", params),
 
   update: (params: { id: string; name: string; path: string }): Promise<Workspace> =>
-    invoke("update_workspace", { id: params.id, name: params.name, path: params.path }),
+    invoke("update_workspace", params),
 
   delete: (id: string): Promise<void> => invoke("delete_workspace", { id }),
 
-  addGroup: (workspaceId: string, groupId: string): Promise<void> =>
-    invoke("add_group_to_workspace", { workspaceId, groupId }),
+  getBindings: (workspaceId: string): Promise<WorkspaceBindings> =>
+    invoke("get_workspace_bindings", { workspaceId }),
 
-  removeGroup: (workspaceId: string, groupId: string): Promise<void> =>
-    invoke("remove_group_from_workspace", { workspaceId, groupId }),
+  toggleGroup: (workspaceId: string, groupId: string, active: boolean): Promise<void> =>
+    invoke("toggle_workspace_group", { workspaceId, groupId, active }),
 
-  getGroupIds: (workspaceId: string): Promise<string[]> =>
-    invoke("get_workspace_group_ids", { workspaceId }),
-
-  toggleGroupActive: (workspaceId: string, groupId: string, active: boolean): Promise<void> =>
-    invoke("toggle_group_in_workspace", { workspaceId, groupId, active }),
-
-  getActiveGroupIds: (workspaceId: string): Promise<string[]> =>
-    invoke("get_workspace_active_group_ids", { workspaceId }),
+  toggleSkill: (workspaceId: string, skillId: string, active: boolean): Promise<void> =>
+    invoke("toggle_workspace_skill", { workspaceId, skillId, active }),
 };

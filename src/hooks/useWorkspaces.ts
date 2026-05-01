@@ -33,47 +33,35 @@ export function useDeleteWorkspace() {
   });
 }
 
-export function useAddGroupToWorkspace() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ workspaceId, groupId }: { workspaceId: string; groupId: string }) =>
-      workspacesApi.addGroup(workspaceId, groupId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["workspaces"] }),
+export function useWorkspaceBindings(workspaceId: string | null) {
+  return useQuery({
+    queryKey: ["workspaces", "bindings", workspaceId],
+    queryFn: () => workspacesApi.getBindings(workspaceId!),
+    enabled: !!workspaceId,
+    staleTime: 0,
   });
 }
 
-export function useRemoveGroupFromWorkspace() {
+export function useToggleWorkspaceGroup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ workspaceId, groupId }: { workspaceId: string; groupId: string }) =>
-      workspacesApi.removeGroup(workspaceId, groupId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["workspaces"] }),
-  });
-}
-
-export function useToggleGroupInWorkspace() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      workspaceId,
-      groupId,
-      active,
-    }: {
-      workspaceId: string;
-      groupId: string;
-      active: boolean;
-    }) => workspacesApi.toggleGroupActive(workspaceId, groupId, active),
+    mutationFn: ({ workspaceId, groupId, active }: { workspaceId: string; groupId: string; active: boolean }) =>
+      workspacesApi.toggleGroup(workspaceId, groupId, active),
     onSuccess: (_data, { workspaceId }) => {
-      qc.invalidateQueries({ queryKey: ["workspaces", "activeGroups", workspaceId] });
+      qc.invalidateQueries({ queryKey: ["workspaces", "bindings", workspaceId] });
+      qc.invalidateQueries({ queryKey: ["skills", "installed"] });
     },
   });
 }
 
-export function useWorkspaceActiveGroupIds(workspaceId: string | null) {
-  return useQuery({
-    queryKey: ["workspaces", "activeGroups", workspaceId],
-    queryFn: () => workspacesApi.getActiveGroupIds(workspaceId!),
-    enabled: !!workspaceId,
-    staleTime: Infinity,
+export function useToggleWorkspaceSkill() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ workspaceId, skillId, active }: { workspaceId: string; skillId: string; active: boolean }) =>
+      workspacesApi.toggleSkill(workspaceId, skillId, active),
+    onSuccess: (_data, { workspaceId }) => {
+      qc.invalidateQueries({ queryKey: ["workspaces", "bindings", workspaceId] });
+      qc.invalidateQueries({ queryKey: ["skills", "installed"] });
+    },
   });
 }
