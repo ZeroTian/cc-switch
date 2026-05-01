@@ -14,6 +14,7 @@ import { Loader2, FolderOpen, Search } from "lucide-react";
 import { settingsApi } from "@/lib/api";
 import { useSkillGroups } from "@/hooks/useSkillGroups";
 import {
+  useWorkspaces,
   useAddGroupToWorkspace,
   useRemoveGroupFromWorkspace,
 } from "@/hooks/useWorkspaces";
@@ -42,10 +43,13 @@ export function WorkspaceEditDialog({ open, workspace, onClose, onSave, saving }
   }, [open, workspace]);
 
   const { data: groups = [] } = useSkillGroups();
+  const { data: workspaces = [] } = useWorkspaces();
   const addMutation = useAddGroupToWorkspace();
   const removeMutation = useRemoveGroupFromWorkspace();
 
-  const boundGroupIds = workspace?.groupIds ?? [];
+  // 从缓存实时读取最新 groupIds，避免 prop 未更新导致勾选无效
+  const liveWorkspace = workspace ? workspaces.find((w) => w.id === workspace.id) : null;
+  const boundGroupIds = liveWorkspace?.groupIds ?? workspace?.groupIds ?? [];
 
   const filteredGroups = groups.filter((g) =>
     g.name.toLowerCase().includes(search.toLowerCase())
