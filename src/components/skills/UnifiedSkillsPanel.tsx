@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import {
@@ -75,6 +76,7 @@ const UnifiedSkillsPanel = React.forwardRef<
   UnifiedSkillsPanelProps
 >(({ onOpenDiscovery, currentApp }, ref) => {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -230,6 +232,7 @@ const UnifiedSkillsPanel = React.forwardRef<
           console.warn(`绑定 skill ${skill.name} 到用户级别空间失败: ${e}`);
         }
       }
+      queryClient.invalidateQueries({ queryKey: ["workspaces", "bindings", "user"] });
       toast.success(t("skills.importSuccess", { count: imported.length }), {
         closeButton: true,
       });

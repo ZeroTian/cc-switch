@@ -161,6 +161,7 @@ impl WorkspaceSkillService {
                         AppType::Codex    => base.join(".codex").join("skills"),
                         AppType::Gemini   => base.join(".gemini").join("skills"),
                         AppType::OpenCode => base.join(".config").join("opencode").join("skills"),
+                        // Hermes 和 OpenClaw 不支持按项目目录隔离的 skills 路径，跳过
                         AppType::Hermes | AppType::OpenClaw => continue,
                     };
                     let _ = std::fs::create_dir_all(&dest_dir);

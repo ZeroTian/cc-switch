@@ -33,6 +33,7 @@ export function useUpdateSkillGroup() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["skillGroups"] });
       qc.invalidateQueries({ queryKey: ["skills", "installed"] });
+      qc.invalidateQueries({ queryKey: ["workspaces", "bindings"] });
     },
   });
 }

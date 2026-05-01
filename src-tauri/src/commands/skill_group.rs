@@ -2,6 +2,7 @@
 
 use crate::database::dao::skill_groups::SkillGroup;
 use crate::services::skill_group::SkillGroupService;
+use crate::services::workspace_skill::WorkspaceSkillService;
 use crate::store::AppState;
 use tauri::State;
 
@@ -33,6 +34,10 @@ pub fn update_skill_group(
 
 #[tauri::command]
 pub fn delete_skill_group(id: String, app_state: State<'_, AppState>) -> Result<(), String> {
+    // 先同步受影响的工作空间，再删除（删除后 FK CASCADE 会清除 binding 行，无法再查）
+    if let Err(e) = WorkspaceSkillService::sync_workspaces_for_group(&app_state.db, &id) {
+        log::warn!("delete_skill_group: pre-delete sync failed: {e}");
+    }
     app_state.db.delete_skill_group(&id).map_err(|e| e.to_string())
 }
 
