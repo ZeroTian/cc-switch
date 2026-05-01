@@ -67,7 +67,7 @@ function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
             onClick={() => setGroupsExpanded((v) => !v)}
           >
             <span className="text-xs font-medium text-muted-foreground">
-              {t("workspaces.bindGroups", "绑定分组")}
+              {t("workspaces.bindGroups", "分组")}
               {boundGroupCount > 0 && (
                 <span className="ml-1.5 text-primary">({boundGroupCount}/{groups.length})</span>
               )}
@@ -116,7 +116,7 @@ function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
             onClick={() => setSkillsExpanded((v) => !v)}
           >
             <span className="text-xs font-medium text-muted-foreground">
-              {t("workspaces.bindSkills", "单独绑定 Skill")}
+              {t("workspaces.bindSkills", "Skill")}
               {boundSkillCount > 0 && (
                 <span className="ml-1.5 text-primary">({boundSkillCount}/{skills.length})</span>
               )}
