@@ -54,8 +54,13 @@ impl WorkspaceSkillService {
                         continue;
                     }
                     let dest = target_skills_dir.join(&skill.directory);
-                    // 使用 symlink_metadata 确保 dangling symlink 也被检测到
-                    if dest.exists() || dest.symlink_metadata().is_ok() {
+                    // dangling symlink：metadata 存在但 target 不存在，修复它
+                    if dest.symlink_metadata().is_ok() && !dest.exists() {
+                        log::info!("apply_workspace: 修复 dangling symlink {}", skill.name);
+                        let _ = std::fs::remove_dir_all(&dest);
+                        let _ = std::fs::remove_file(&dest);
+                    } else if dest.exists() {
+                        // 正常存在，跳过
                         synced += 1;
                         continue;
                     }
@@ -75,8 +80,14 @@ impl WorkspaceSkillService {
                         }
                     }
                 }
-                Ok(None) => log::warn!("apply_workspace: skill {skill_id} 不存在，跳过"),
-                Err(e) => log::warn!("apply_workspace: 读取 skill {skill_id} 失败: {e}"),
+                Ok(None) => {
+                    log::warn!("apply_workspace: skill {skill_id} 不存在，跳过");
+                    failed.push(skill_id.clone());
+                }
+                Err(e) => {
+                    log::warn!("apply_workspace: 读取 skill {skill_id} 失败: {e}");
+                    failed.push(skill_id.clone());
+                }
             }
         }
 
