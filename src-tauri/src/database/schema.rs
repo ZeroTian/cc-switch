@@ -534,6 +534,11 @@ impl Database {
                         Self::migrate_v15_to_v16(conn)?;
                         Self::set_user_version(conn, 16)?;
                     }
+                    16 => {
+                        log::info!("迁移数据库从 v16 到 v17（工作空间绑定表重构，移除旧分组关联表）");
+                        Self::migrate_v16_to_v17(conn)?;
+                        Self::set_user_version(conn, 17)?;
+                    }
                     _ => {
                         return Err(AppError::Database(format!(
                             "未知的数据库版本 {version}，无法迁移到 {SCHEMA_VERSION}"
@@ -1400,6 +1405,83 @@ impl Database {
              );",
         )
         .map_err(|e| AppError::Database(e.to_string()))
+    }
+
+    fn migrate_v16_to_v17(conn: &Connection) -> Result<(), AppError> {
+        // 1. workspaces 表加 is_user_level 列（若列已存在则忽略）
+        conn.execute_batch(
+            "ALTER TABLE workspaces ADD COLUMN is_user_level INTEGER NOT NULL DEFAULT 0;",
+        )
+        .ok();
+
+        // 2. 插入用户级别空间（若不存在）
+        conn.execute(
+            "INSERT OR IGNORE INTO workspaces (id, name, path, is_user_level, created_at, updated_at)
+             VALUES ('user', '用户级别', '~', 1, unixepoch(), unixepoch())",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // 3. 新建 workspace_skill_bindings 表
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS workspace_skill_bindings (
+                workspace_id TEXT NOT NULL,
+                skill_id     TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, skill_id)
+            );",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // 4. 新建 workspace_group_bindings 表
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS workspace_group_bindings (
+                workspace_id TEXT NOT NULL,
+                group_id     TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, group_id)
+            );",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // 5. 迁移旧 workspace_group_active（active=1）到新表（旧表可能不存在，忽略错误）
+        conn.execute_batch(
+            "INSERT OR IGNORE INTO workspace_group_bindings (workspace_id, group_id)
+             SELECT workspace_id, group_id FROM workspace_group_active WHERE active = 1;",
+        )
+        .ok();
+
+        // 6. 重建 skill_groups 表（移除 app 开关列和 is_active 列）
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS skill_groups_new (
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                description TEXT,
+                icon        TEXT,
+                sort_index  INTEGER,
+                created_at  INTEGER NOT NULL,
+                updated_at  INTEGER NOT NULL
+            );",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        conn.execute_batch(
+            "INSERT OR IGNORE INTO skill_groups_new (id, name, description, icon, sort_index, created_at, updated_at)
+                SELECT id, name, description, icon, sort_index, created_at, updated_at FROM skill_groups;",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        conn.execute_batch("DROP TABLE skill_groups;")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        conn.execute_batch("ALTER TABLE skill_groups_new RENAME TO skill_groups;")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // 7. 删除废弃旧表（忽略不存在错误）
+        conn.execute_batch("DROP TABLE IF EXISTS workspace_groups;").ok();
+        conn.execute_batch("DROP TABLE IF EXISTS workspace_group_active;").ok();
+        conn.execute_batch("DROP TABLE IF EXISTS skill_group_snapshot;").ok();
+
+        log::info!("v16 -> v17 迁移完成：工作空间绑定表重构，移除旧分组关联表");
+        Ok(())
     }
 
     /// 插入默认模型定价数据
