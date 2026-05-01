@@ -54,7 +54,8 @@ impl WorkspaceSkillService {
                         continue;
                     }
                     let dest = target_skills_dir.join(&skill.directory);
-                    if dest.exists() {
+                    // 使用 symlink_metadata 确保 dangling symlink 也被检测到
+                    if dest.exists() || dest.symlink_metadata().is_ok() {
                         synced += 1;
                         continue;
                     }
@@ -62,6 +63,8 @@ impl WorkspaceSkillService {
                         Ok(()) => synced += 1,
                         Err(e) => {
                             log::warn!("apply_workspace: symlink skill {} 失败: {e}，尝试复制", skill.name);
+                            // 清理可能存在的残留状态，确保复制操作干净
+                            let _ = std::fs::remove_dir_all(&dest);
                             match Self::copy_dir(&source, &dest) {
                                 Ok(()) => synced += 1,
                                 Err(e2) => {
