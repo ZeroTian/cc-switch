@@ -47,7 +47,7 @@ import {
 } from "@/components/ui/dialog";
 import { SkillGroupsPanel } from "./SkillGroupsPanel";
 import { WorkspacesPanel } from "./WorkspacesPanel";
-import { useSkillGroups, useDeactivateAllSkillGroups } from "@/hooks/useSkillGroups";
+import { useSkillGroups } from "@/hooks/useSkillGroups";
 
 interface UnifiedSkillsPanelProps {
   onOpenDiscovery: () => void;
@@ -109,8 +109,7 @@ const UnifiedSkillsPanel = React.forwardRef<
   const [activeTab, setActiveTab] = useState<"installed" | "groups" | "workspaces">("installed");
   const [searchQuery, setSearchQuery] = useState("");
   const { data: groups = [] } = useSkillGroups();
-  const deactivateGroupMutation = useDeactivateAllSkillGroups();
-  const activeGroup = groups.find((g) => g.isActive);
+  const activeGroups = groups.filter((g) => g.isActive);
 
   const updatesMap = useMemo(() => {
     const map: Record<string, SkillUpdateInfo> = {};
@@ -468,19 +467,12 @@ const UnifiedSkillsPanel = React.forwardRef<
       </div>}
 
       {/* 激活提示条（仅在已安装 tab 显示） */}
-      {activeGroup && activeTab === "installed" && (
+      {activeGroups.length > 0 && activeTab === "installed" && (
         <div className="flex items-center gap-2 mb-2 pl-3 pr-2 py-1.5 border-l-2 border-primary text-sm">
           <span className="text-muted-foreground">{t("skillGroups.activeLabelPrefix", "分组：")} </span>
-          <span className="font-medium text-foreground truncate flex-1">{activeGroup.name}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 text-xs text-muted-foreground hover:text-foreground shrink-0"
-            onClick={() => deactivateGroupMutation.mutate()}
-            disabled={deactivateGroupMutation.isPending}
-          >
-            {t("skillGroups.deactivate", "停用")}
-          </Button>
+          <span className="font-medium text-foreground truncate flex-1">
+            {t("skillGroups.activeCount", "{{count}} 个已激活", { count: activeGroups.length })}
+          </span>
         </div>
       )}
 
