@@ -487,7 +487,7 @@ const UnifiedSkillsPanel = React.forwardRef<
               placeholder={t("skills.search", "搜索技能名称或描述...")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 focus:ring-1 focus:ring-primary/30 focus:ring-offset-0"
+              className="pl-9"
             />
           </div>
           <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
