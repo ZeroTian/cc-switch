@@ -25,6 +25,26 @@ export function useUpdateWorkspace() {
   });
 }
 
+export function useReorderWorkspaces() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (orderedIds: string[]) => workspacesApi.reorder(orderedIds),
+    onMutate: async (orderedIds) => {
+      await qc.cancelQueries({ queryKey: ["workspaces"] });
+      const previous = qc.getQueryData(["workspaces"]);
+      qc.setQueryData(["workspaces"], (old: import("@/lib/api/workspaces").Workspace[] | undefined) => {
+        if (!old) return old;
+        return orderedIds.map((id) => old.find((w) => w.id === id)!).filter(Boolean);
+      });
+      return { previous };
+    },
+    onError: (_err, _ids, ctx) => {
+      if (ctx?.previous) qc.setQueryData(["workspaces"], ctx.previous);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["workspaces"] }),
+  });
+}
+
 export function useDeleteWorkspace() {
   const qc = useQueryClient();
   return useMutation({

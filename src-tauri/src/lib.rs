@@ -1178,6 +1178,7 @@ pub fn run() {
             commands::get_workspace_bindings,
             commands::toggle_workspace_group,
             commands::toggle_workspace_skill,
+            commands::reorder_workspaces,
             // Skill management (legacy API compatibility)
             commands::get_skills,
             commands::get_skills_for_app,

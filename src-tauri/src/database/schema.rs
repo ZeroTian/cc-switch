@@ -539,6 +539,11 @@ impl Database {
                         Self::migrate_v16_to_v17(conn)?;
                         Self::set_user_version(conn, 17)?;
                     }
+                    17 => {
+                        log::info!("迁移数据库从 v17 到 v18（workspaces 加 sort_index 列）");
+                        Self::migrate_v17_to_v18(conn)?;
+                        Self::set_user_version(conn, 18)?;
+                    }
                     _ => {
                         return Err(AppError::Database(format!(
                             "未知的数据库版本 {version}，无法迁移到 {SCHEMA_VERSION}"
@@ -1490,6 +1495,13 @@ impl Database {
         conn.execute_batch("DROP TABLE IF EXISTS skill_group_snapshot;").ok();
 
         log::info!("v16 -> v17 迁移完成：工作空间绑定表重构，移除旧分组关联表");
+        Ok(())
+    }
+
+    fn migrate_v17_to_v18(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(
+            "ALTER TABLE workspaces ADD COLUMN sort_index INTEGER;",
+        ).ok(); // 若列已存在则忽略
         Ok(())
     }
 

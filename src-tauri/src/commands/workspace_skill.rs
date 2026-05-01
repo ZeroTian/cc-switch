@@ -95,3 +95,12 @@ pub fn toggle_workspace_skill(
     WorkspaceSkillService::toggle_skill(&app_state.db, &workspace_id, &skill_id, active)
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn reorder_workspaces(
+    ordered_ids: Vec<String>,
+    app_state: State<'_, AppState>,
+) -> Result<(), String> {
+    app_state.db.reorder_workspaces(&ordered_ids).map_err(|e| e.to_string())
+}
+

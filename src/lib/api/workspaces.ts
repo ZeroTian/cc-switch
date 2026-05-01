@@ -34,4 +34,7 @@ export const workspacesApi = {
 
   toggleSkill: (workspaceId: string, skillId: string, active: boolean): Promise<void> =>
     invoke("toggle_workspace_skill", { workspaceId, skillId, active }),
+
+  reorder: (orderedIds: string[]): Promise<void> =>
+    invoke("reorder_workspaces", { orderedIds }),
 };

@@ -31,7 +31,7 @@ impl Database {
     pub fn get_all_workspaces(&self) -> Result<Vec<Workspace>, AppError> {
         let conn = lock_conn!(self.conn);
         let mut stmt = conn
-            .prepare("SELECT id, name, path, is_user_level, created_at, updated_at FROM workspaces ORDER BY created_at ASC")
+            .prepare("SELECT id, name, path, is_user_level, created_at, updated_at FROM workspaces ORDER BY is_user_level DESC, COALESCE(sort_index, 9999), created_at ASC")
             .map_err(|e| AppError::Database(e.to_string()))?;
         let result = stmt
             .query_map([], |row| Self::row_to_workspace(row))
@@ -170,5 +170,17 @@ impl Database {
             .query_map([skill_id], |row| row.get::<_, String>(0))
             .map_err(|e| AppError::Database(e.to_string()))?;
         rows.map(|r| r.map_err(|e| AppError::Database(e.to_string()))).collect()
+    }
+
+    pub fn reorder_workspaces(&self, ordered_ids: &[String]) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        for (i, id) in ordered_ids.iter().enumerate() {
+            conn.execute(
+                "UPDATE workspaces SET sort_index = ?1 WHERE id = ?2",
+                params![i as i64, id],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        }
+        Ok(())
     }
 }

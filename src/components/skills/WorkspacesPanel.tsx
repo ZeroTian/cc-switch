@@ -1,8 +1,23 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Plus, Edit2, Trash2, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Plus, Edit2, Trash2, ChevronDown, ChevronRight, Loader2, GripVertical } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { WorkspaceEditDialog } from "./WorkspaceEditDialog";
 import {
@@ -10,6 +25,7 @@ import {
   useCreateWorkspace,
   useUpdateWorkspace,
   useDeleteWorkspace,
+  useReorderWorkspaces,
   useWorkspaceBindings,
   useToggleWorkspaceGroup,
   useToggleWorkspaceSkill,
@@ -179,6 +195,25 @@ function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
   );
 }
 
+function SortableWorkspaceItem({
+  ws,
+  renderCard,
+}: {
+  ws: Workspace;
+  renderCard: (ws: Workspace, opts?: { dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>; style?: React.CSSProperties; ref?: React.Ref<HTMLDivElement> }) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: ws.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return <>{renderCard(ws, { dragHandleProps: { ...attributes, ...listeners }, style, ref: setNodeRef })}</>;
+}
+
 export function WorkspacesPanel() {
   const { t } = useTranslation();
   const { data: workspaces = [], isLoading } = useWorkspaces();
@@ -197,9 +232,21 @@ export function WorkspacesPanel() {
   const createMutation = useCreateWorkspace();
   const updateMutation = useUpdateWorkspace();
   const deleteMutation = useDeleteWorkspace();
+  const reorderMutation = useReorderWorkspaces();
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const userLevelWs = workspaces.find((ws) => ws.isUserLevel);
   const projectWorkspaces = workspaces.filter((ws) => !ws.isUserLevel);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = projectWorkspaces.findIndex((w) => w.id === active.id);
+    const newIndex = projectWorkspaces.findIndex((w) => w.id === over.id);
+    const reordered = arrayMove(projectWorkspaces, oldIndex, newIndex);
+    reorderMutation.mutate(reordered.map((w) => w.id));
+  };
 
   const handleSave = async (params: { name: string; path: string }) => {
     try {
@@ -240,26 +287,39 @@ export function WorkspacesPanel() {
     );
   }
 
-  const renderWorkspace = (ws: Workspace, isUserLevel: boolean) => {
+  const renderWorkspaceCard = (
+    ws: Workspace,
+    opts?: { dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>; style?: React.CSSProperties; ref?: React.Ref<HTMLDivElement> }
+  ) => {
     const expanded = expandedId === ws.id;
+    const isUserLevel = ws.isUserLevel;
     return (
       <div
-        key={ws.id}
-        className="rounded-lg border border-border-default overflow-hidden"
+        ref={opts?.ref}
+        style={opts?.style}
+        className="rounded-lg border border-border-default overflow-hidden bg-background"
       >
         <div
-          className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-accent/50 select-none"
+          className="flex items-center gap-2 px-3 py-3 cursor-pointer hover:bg-accent/50 select-none"
           onClick={() => toggleExpand(ws.id)}
         >
+          {!isUserLevel && (
+            <button
+              type="button"
+              className="cursor-grab text-muted-foreground/40 hover:text-muted-foreground shrink-0 touch-none"
+              onClick={(e) => e.stopPropagation()}
+              {...opts?.dragHandleProps}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          )}
           {expanded ? (
             <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
           ) : (
             <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
           )}
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-sm flex items-center gap-2">
-              {ws.name}
-            </div>
+            <div className="font-medium text-sm">{ws.name}</div>
             <div className="text-xs text-muted-foreground truncate mt-0.5">{ws.path}</div>
           </div>
           <div
@@ -310,8 +370,14 @@ export function WorkspacesPanel() {
       </div>
 
       <div className="space-y-2">
-        {userLevelWs && renderWorkspace(userLevelWs, true)}
-        {projectWorkspaces.map((ws) => renderWorkspace(ws, false))}
+        {userLevelWs && renderWorkspaceCard(userLevelWs)}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={projectWorkspaces.map((w) => w.id)} strategy={verticalListSortingStrategy}>
+            {projectWorkspaces.map((ws) => (
+              <SortableWorkspaceItem key={ws.id} ws={ws} renderCard={renderWorkspaceCard} />
+            ))}
+          </SortableContext>
+        </DndContext>
         {!userLevelWs && projectWorkspaces.length === 0 && (
           <div className="text-center py-12 text-muted-foreground text-sm">
             {t("workspaces.empty", "还没有工作空间，点击「新建工作空间」开始")}

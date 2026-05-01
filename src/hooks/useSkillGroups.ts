@@ -42,7 +42,19 @@ export function useReorderSkillGroups() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (orderedIds: string[]) => skillGroupsApi.reorder(orderedIds),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["skillGroups"] }),
+    onMutate: async (orderedIds) => {
+      await qc.cancelQueries({ queryKey: ["skillGroups"] });
+      const previous = qc.getQueryData(["skillGroups"]);
+      qc.setQueryData(["skillGroups"], (old: import("@/lib/api/skills").SkillGroup[] | undefined) => {
+        if (!old) return old;
+        return orderedIds.map((id) => old.find((g) => g.id === id)!).filter(Boolean);
+      });
+      return { previous };
+    },
+    onError: (_err, _ids, ctx) => {
+      if (ctx?.previous) qc.setQueryData(["skillGroups"], ctx.previous);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["skillGroups"] }),
   });
 }
 
