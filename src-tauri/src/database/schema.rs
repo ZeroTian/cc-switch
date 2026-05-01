@@ -1446,10 +1446,10 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
-        // 5. 迁移旧 workspace_group_active（active=1）到新表（旧表可能不存在，忽略错误）
+        // 5. 迁移旧 workspace_group_active 到新表（旧表可能不存在，忽略错误）
         conn.execute_batch(
             "INSERT OR IGNORE INTO workspace_group_bindings (workspace_id, group_id)
-             SELECT workspace_id, group_id FROM workspace_group_active WHERE active = 1;",
+             SELECT workspace_id, group_id FROM workspace_group_active;",
         )
         .ok();
 

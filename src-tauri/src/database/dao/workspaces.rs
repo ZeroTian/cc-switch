@@ -76,17 +76,7 @@ impl Database {
                  FROM workspaces WHERE id = ?1",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
-        match stmt.query_row([id], |row| {
-            Ok(Workspace {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                path: row.get(2)?,
-                is_user_level: row.get::<_, i64>(3)? != 0,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
-                group_ids: vec![],
-            })
-        }) {
+        match stmt.query_row([id], |row| Self::row_to_workspace(row)) {
             Ok(w) => Ok(Some(w)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(AppError::Database(e.to_string())),
