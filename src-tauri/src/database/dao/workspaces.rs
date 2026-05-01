@@ -136,4 +136,51 @@ impl Database {
         rows.map(|r| r.map_err(|e| AppError::Database(e.to_string())))
             .collect()
     }
+
+    pub fn toggle_workspace_group_active(
+        &self,
+        workspace_id: &str,
+        group_id: &str,
+        active: bool,
+    ) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        if active {
+            conn.execute(
+                "INSERT OR IGNORE INTO workspace_group_active (workspace_id, group_id) VALUES (?1, ?2)",
+                rusqlite::params![workspace_id, group_id],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        } else {
+            conn.execute(
+                "DELETE FROM workspace_group_active WHERE workspace_id=?1 AND group_id=?2",
+                rusqlite::params![workspace_id, group_id],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    pub fn get_workspace_active_group_ids(&self, workspace_id: &str) -> Result<Vec<String>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare("SELECT group_id FROM workspace_group_active WHERE workspace_id=?1")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let rows = stmt
+            .query_map([workspace_id], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        rows.map(|r| r.map_err(|e| AppError::Database(e.to_string())))
+            .collect()
+    }
+
+    pub fn get_workspaces_with_active_group(&self, group_id: &str) -> Result<Vec<String>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare("SELECT workspace_id FROM workspace_group_active WHERE group_id=?1")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let rows = stmt
+            .query_map([group_id], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        rows.map(|r| r.map_err(|e| AppError::Database(e.to_string())))
+            .collect()
+    }
 }
