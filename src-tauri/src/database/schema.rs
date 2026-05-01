@@ -1417,12 +1417,12 @@ impl Database {
         // 2. 插入用户级别空间（若不存在），并确保名称为最新值
         conn.execute(
             "INSERT OR IGNORE INTO workspaces (id, name, path, is_user_level, created_at, updated_at)
-             VALUES ('user', '全局配置', '~', 1, unixepoch(), unixepoch())",
+             VALUES ('user', '全局', '~', 1, unixepoch(), unixepoch())",
             [],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
         conn.execute(
-            "UPDATE workspaces SET name = '全局配置' WHERE id = 'user'",
+            "UPDATE workspaces SET name = '全局' WHERE id = 'user'",
             [],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;

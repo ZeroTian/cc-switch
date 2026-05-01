@@ -249,11 +249,6 @@ export function WorkspacesPanel() {
           <div className="flex-1 min-w-0">
             <div className="font-medium text-sm flex items-center gap-2">
               {ws.name}
-              {isUserLevel && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-normal">
-                  {t("workspaces.userLevelBadge", "全局")}
-                </span>
-              )}
             </div>
             <div className="text-xs text-muted-foreground truncate mt-0.5">{ws.path}</div>
           </div>
