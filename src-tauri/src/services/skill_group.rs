@@ -61,7 +61,9 @@ impl SkillGroupService {
         Self::sync_active_groups_to_global(db)
     }
 
-    /// 计算所有激活分组的成员 skill 并集，全量同步到全局 app 目录
+    /// 计算所有激活分组的成员 skill 并集，全量同步到全局 app 目录。
+    /// 若无激活分组则清空全局 skills（无分组激活 = 不由分组管理全局，有意设计）。
+    /// 注意：手动 toggle skill app 不触发此函数；分组激活期间手动配置会在下次分组变动时被覆盖。
     pub fn sync_active_groups_to_global(db: &Arc<Database>) -> Result<()> {
         let active_group_ids = db.get_active_skill_group_ids().map_err(|e| anyhow!("{e}"))?;
 
