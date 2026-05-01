@@ -1171,6 +1171,15 @@ pub fn run() {
             commands::add_skill_to_group,
             commands::remove_skill_from_group,
             commands::get_group_member_ids,
+            // Workspace skill management
+            commands::get_workspaces,
+            commands::create_workspace,
+            commands::update_workspace,
+            commands::delete_workspace,
+            commands::add_group_to_workspace,
+            commands::remove_group_from_workspace,
+            commands::get_workspace_group_ids,
+            commands::apply_workspace,
             // Skill management (legacy API compatibility)
             commands::get_skills,
             commands::get_skills_for_app,
