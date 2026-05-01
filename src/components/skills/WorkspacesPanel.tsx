@@ -22,12 +22,16 @@ function WorkspaceGroupList({ workspace }: { workspace: Workspace }) {
   const { data: groups = [] } = useSkillGroups();
   const { data: activeGroupIds = [] } = useWorkspaceActiveGroupIds(workspace.id);
   const toggleMutation = useToggleGroupInWorkspace();
+  const [pendingGroupId, setPendingGroupId] = useState<string | null>(null);
 
   const handleToggle = async (groupId: string, checked: boolean) => {
+    setPendingGroupId(groupId);
     try {
       await toggleMutation.mutateAsync({ workspaceId: workspace.id, groupId, active: checked });
     } catch (error) {
       toast.error(t("common.error", "操作失败"), { description: String(error) });
+    } finally {
+      setPendingGroupId(null);
     }
   };
 
@@ -51,7 +55,7 @@ function WorkspaceGroupList({ workspace }: { workspace: Workspace }) {
             <Checkbox
               checked={checked}
               onCheckedChange={(v) => handleToggle(group.id, !!v)}
-              disabled={toggleMutation.isPending}
+              disabled={pendingGroupId === group.id}
             />
             <span className={`text-sm ${checked ? "text-primary font-medium" : ""}`}>
               {group.name}
