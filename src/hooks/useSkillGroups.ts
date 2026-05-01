@@ -52,9 +52,10 @@ export function useReorderSkillGroups() {
       return { previous };
     },
     onError: (_err, _ids, ctx) => {
+      // 出错时回滚
       if (ctx?.previous) qc.setQueryData(["skillGroups"], ctx.previous);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["skillGroups"] }),
+    // 不在 onSettled 触发 refetch，乐观更新即最终状态，避免 refetch 回弹
   });
 }
 

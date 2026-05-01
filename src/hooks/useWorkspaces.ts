@@ -43,7 +43,7 @@ export function useReorderWorkspaces() {
     onError: (_err, _ids, ctx) => {
       if (ctx?.previous) qc.setQueryData(["workspaces"], ctx.previous);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["workspaces"] }),
+    // 不在 onSettled 触发 refetch，乐观更新即最终状态，避免 refetch 回弹
   });
 }
 
