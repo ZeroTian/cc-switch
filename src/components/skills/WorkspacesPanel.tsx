@@ -235,9 +235,7 @@ export function WorkspacesPanel() {
     return (
       <div
         key={ws.id}
-        className={`rounded-lg border overflow-hidden ${
-          isUserLevel ? "border-primary/30 bg-primary/5" : "border-border-default"
-        }`}
+        className="rounded-lg border border-border-default overflow-hidden"
       >
         <div
           className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-accent/50 select-none"
@@ -252,8 +250,8 @@ export function WorkspacesPanel() {
             <div className="font-medium text-sm flex items-center gap-2">
               {ws.name}
               {isUserLevel && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-normal">
-                  {t("workspaces.userLevel", "用户级别")}
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-normal">
+                  {t("workspaces.userLevelBadge", "全局")}
                 </span>
               )}
             </div>
