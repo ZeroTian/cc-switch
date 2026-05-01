@@ -1427,7 +1427,9 @@ impl Database {
             "CREATE TABLE IF NOT EXISTS workspace_skill_bindings (
                 workspace_id TEXT NOT NULL,
                 skill_id     TEXT NOT NULL,
-                PRIMARY KEY (workspace_id, skill_id)
+                PRIMARY KEY (workspace_id, skill_id),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id)     REFERENCES skills(id)     ON DELETE CASCADE
             );",
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -1437,7 +1439,9 @@ impl Database {
             "CREATE TABLE IF NOT EXISTS workspace_group_bindings (
                 workspace_id TEXT NOT NULL,
                 group_id     TEXT NOT NULL,
-                PRIMARY KEY (workspace_id, group_id)
+                PRIMARY KEY (workspace_id, group_id),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id)    ON DELETE CASCADE,
+                FOREIGN KEY (group_id)     REFERENCES skill_groups(id)  ON DELETE CASCADE
             );",
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
