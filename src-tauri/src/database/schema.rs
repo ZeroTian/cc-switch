@@ -399,6 +399,32 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
+        // 工作空间定义表
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS workspaces (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // 工作空间与分组多对多关联表
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS workspace_groups (
+                workspace_id TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, group_id),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
         Ok(())
     }
 
@@ -492,6 +518,11 @@ impl Database {
                         log::info!("迁移数据库从 v12 到 v13（添加技能分组激活快照表）");
                         Self::migrate_v12_to_v13(conn)?;
                         Self::set_user_version(conn, 13)?;
+                    }
+                    13 => {
+                        log::info!("迁移数据库从 v13 到 v14（添加工作空间功能）");
+                        Self::migrate_v13_to_v14(conn)?;
+                        Self::set_user_version(conn, 14)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1304,6 +1335,26 @@ impl Database {
                 enabled_gemini BOOLEAN NOT NULL DEFAULT 0,
                 enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
                 enabled_hermes BOOLEAN NOT NULL DEFAULT 0
+            );",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))
+    }
+
+    fn migrate_v13_to_v14(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS workspaces (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS workspace_groups (
+                workspace_id TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, group_id),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE
             );",
         )
         .map_err(|e| AppError::Database(e.to_string()))
