@@ -1,22 +1,17 @@
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { Plus, Edit2, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SkillGroupEditDialog } from "./SkillGroupEditDialog";
-import { AppToggleGroup } from "@/components/common/AppToggleGroup";
-import { SKILLS_APP_IDS } from "@/config/appConfig";
 import {
   useSkillGroups,
   useCreateSkillGroup,
   useUpdateSkillGroup,
   useDeleteSkillGroup,
-  useSetGroupActive,
 } from "@/hooks/useSkillGroups";
-import type { SkillGroup, SkillGroupApps } from "@/lib/api/skills";
+import type { SkillGroup } from "@/lib/api/skills";
 
 export function SkillGroupsPanel() {
   const { t } = useTranslation();
@@ -35,9 +30,8 @@ export function SkillGroupsPanel() {
   const createMutation = useCreateSkillGroup();
   const updateMutation = useUpdateSkillGroup();
   const deleteMutation = useDeleteSkillGroup();
-  const setActiveMutation = useSetGroupActive();
 
-  const handleSave = async (params: { name: string; description?: string; apps: SkillGroupApps }) => {
+  const handleSave = async (params: { name: string; description?: string; memberIds: string[] }) => {
     const { group } = editDialogState;
     try {
       if (group) {
@@ -64,14 +58,6 @@ export function SkillGroupsPanel() {
     }
   };
 
-  const handleToggleActive = async (group: SkillGroup, checked: boolean) => {
-    try {
-      await setActiveMutation.mutateAsync({ id: group.id, active: checked });
-    } catch (error) {
-      toast.error(t("common.error", "操作失败"), { description: String(error) });
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -84,7 +70,7 @@ export function SkillGroupsPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {t("skillGroups.description", "将 Skill 按场景分组，一键切换当前激活集合")}
+          {t("skillGroups.description", "将 Skill 按场景分组，在工作空间中一键绑定")}
         </p>
         <Button
           variant="outline"
@@ -101,37 +87,23 @@ export function SkillGroupsPanel() {
           {t("skillGroups.empty", "还没有分组，点击「新建分组」开始")}
         </div>
       ) : (
-        <TooltipProvider delayDuration={300}>
         <div className="space-y-2">
           {groups.map((group) => (
             <div
               key={group.id}
-              className={`flex items-center gap-4 rounded-lg px-4 py-3 border ${
-                group.isActive
-                  ? "border-primary bg-primary/5"
-                  : "border-border-default"
-              }`}
+              className="flex items-center gap-4 rounded-lg px-4 py-3 border border-border-default"
             >
-              <Checkbox
-                checked={group.isActive}
-                onCheckedChange={(v) => handleToggleActive(group, !!v)}
-                disabled={setActiveMutation.isPending}
-              />
               <div className="flex-1 min-w-0">
-                <span className={`font-medium text-sm ${group.isActive ? "text-primary" : ""}`}>
-                  {group.name}
-                </span>
+                <span className="font-medium text-sm">{group.name}</span>
                 {group.description && (
                   <p className="text-xs text-muted-foreground mt-0.5 truncate">
                     {group.description}
                   </p>
                 )}
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {t("skillGroups.memberCount", "{{count}} 个 Skill", { count: group.memberIds.length })}
+                </p>
               </div>
-              <AppToggleGroup
-                apps={group.apps}
-                onToggle={() => {}}
-                appIds={SKILLS_APP_IDS}
-              />
               <div className="flex items-center gap-1 shrink-0">
                 <Button
                   variant="ghost"
@@ -153,7 +125,6 @@ export function SkillGroupsPanel() {
             </div>
           ))}
         </div>
-        </TooltipProvider>
       )}
 
       <SkillGroupEditDialog
