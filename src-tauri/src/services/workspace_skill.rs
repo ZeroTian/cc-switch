@@ -161,9 +161,13 @@ impl WorkspaceSkillService {
                         };
                     }
                     #[cfg(unix)]
-                    { let _ = std::os::unix::fs::symlink(&source, &dest); }
+                    if let Err(e) = std::os::unix::fs::symlink(&source, &dest) {
+                        log::warn!("sync_path: symlink {:?} -> {:?} 失败: {e}", source, dest);
+                    }
                     #[cfg(windows)]
-                    { let _ = std::os::windows::fs::symlink_dir(&source, &dest); }
+                    if let Err(e) = std::os::windows::fs::symlink_dir(&source, &dest) {
+                        log::warn!("sync_path: symlink {:?} -> {:?} 失败: {e}", source, dest);
+                    }
                 }
             }
         }
