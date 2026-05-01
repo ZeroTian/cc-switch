@@ -46,6 +46,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SkillGroupsPanel } from "./SkillGroupsPanel";
+import { WorkspacesPanel } from "./WorkspacesPanel";
 import { useSkillGroups, useDeactivateAllSkillGroups } from "@/hooks/useSkillGroups";
 
 interface UnifiedSkillsPanelProps {
@@ -106,7 +107,7 @@ const UnifiedSkillsPanel = React.forwardRef<
   } = useCheckSkillUpdates();
   const updateSkillMutation = useUpdateSkill();
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
-  const [activeTab, setActiveTab] = useState<"installed" | "groups">("installed");
+  const [activeTab, setActiveTab] = useState<"installed" | "groups" | "workspaces">("installed");
   const [searchQuery, setSearchQuery] = useState("");
   const { data: groups = [] } = useSkillGroups();
   const deactivateGroupMutation = useDeactivateAllSkillGroups();
@@ -403,6 +404,17 @@ const UnifiedSkillsPanel = React.forwardRef<
         >
           {t("skillGroups.title", "分组")}
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("workspaces")}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+            activeTab === "workspaces"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {t("workspaces.title", "工作空间")}
+        </button>
       </div>
       {activeTab === "installed" && <div className="flex items-center justify-between">
         <AppCountBar
@@ -531,9 +543,13 @@ const UnifiedSkillsPanel = React.forwardRef<
           )}
           </div>
         </div>
-      ) : (
+      ) : activeTab === "groups" ? (
         <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
           <SkillGroupsPanel />
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
+          <WorkspacesPanel />
         </div>
       )}
 
