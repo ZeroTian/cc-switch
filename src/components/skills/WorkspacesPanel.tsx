@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Edit2, Trash2, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -93,17 +92,17 @@ function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
               {sortedGroups.map((group) => {
                 const checked = boundGroupIds.has(group.id);
                 return (
-                  <label
+                  <button
+                    type="button"
                     key={group.id}
-                    className="flex items-center gap-2 cursor-pointer rounded px-1 py-1.5 hover:bg-accent"
+                    className={`w-full flex items-center gap-2 rounded px-2 py-1.5 text-left transition-colors ${
+                      checked ? "bg-primary/8 hover:bg-primary/12" : "hover:bg-accent"
+                    }`}
+                    onClick={() => handleToggleGroup(group.id, !checked)}
+                    disabled={pendingId === group.id}
                   >
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={(v) => handleToggleGroup(group.id, !!v)}
-                      disabled={pendingId === group.id}
-                    />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium">{group.name}</div>
+                      <div className={`text-sm font-medium ${checked ? "text-primary" : ""}`}>{group.name}</div>
                       {group.description && (
                         <div className="text-xs text-muted-foreground truncate">{group.description}</div>
                       )}
@@ -111,7 +110,7 @@ function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
                     <span className="text-xs text-muted-foreground shrink-0">
                       {t("skillGroups.memberCount", "{{count}} 个 Skill", { count: group.memberIds.length })}
                     </span>
-                  </label>
+                  </button>
                 );
               })}
             </div>
@@ -142,22 +141,22 @@ function WorkspaceBindingsPanel({ workspace }: { workspace: Workspace }) {
               {sortedSkills.map((skill) => {
                 const checked = boundSkillIds.has(skill.id);
                 return (
-                  <label
+                  <button
+                    type="button"
                     key={skill.id}
-                    className="flex items-center gap-2 cursor-pointer rounded px-1 py-1.5 hover:bg-accent"
+                    className={`w-full flex items-center gap-2 rounded px-2 py-1.5 text-left transition-colors ${
+                      checked ? "bg-primary/8 hover:bg-primary/12" : "hover:bg-accent"
+                    }`}
+                    onClick={() => handleToggleSkill(skill.id, !checked)}
+                    disabled={pendingId === skill.id}
                   >
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={(v) => handleToggleSkill(skill.id, !!v)}
-                      disabled={pendingId === skill.id}
-                    />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm">{skill.name}</div>
+                      <div className={`text-sm ${checked ? "text-primary font-medium" : ""}`}>{skill.name}</div>
                       {skill.description && (
                         <div className="text-xs text-muted-foreground truncate">{skill.description}</div>
                       )}
                     </div>
-                  </label>
+                  </button>
                 );
               })}
             </div>
