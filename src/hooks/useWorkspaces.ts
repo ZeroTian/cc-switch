@@ -34,7 +34,9 @@ export function useReorderWorkspaces() {
       const previous = qc.getQueryData(["workspaces"]);
       qc.setQueryData(["workspaces"], (old: import("@/lib/api/workspaces").Workspace[] | undefined) => {
         if (!old) return old;
-        return orderedIds.map((id) => old.find((w) => w.id === id)!).filter(Boolean);
+        const nonProject = old.filter((w) => w.isUserLevel);
+        const reordered = orderedIds.map((id) => old.find((w) => w.id === id)!).filter(Boolean);
+        return [...nonProject, ...reordered];
       });
       return { previous };
     },
