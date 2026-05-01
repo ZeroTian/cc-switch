@@ -60,11 +60,15 @@ pub fn add_skill_to_group(
     // 若该分组全局已激活，同步到全局
     if let Ok(Some(group)) = app_state.db.get_skill_group(&group_id) {
         if group.is_active {
-            let _ = SkillGroupService::sync_active_groups_to_global(&app_state.db);
+            if let Err(e) = SkillGroupService::sync_active_groups_to_global(&app_state.db) {
+                log::warn!("skill_to_group: 全局同步失败: {e}");
+            }
         }
     }
     // 同步到绑定该分组的工作空间
-    let _ = WorkspaceSkillService::sync_workspaces_for_group(&app_state.db, &group_id);
+    if let Err(e) = WorkspaceSkillService::sync_workspaces_for_group(&app_state.db, &group_id) {
+        log::warn!("skill_to_group: 工作空间同步失败: {e}");
+    }
     Ok(())
 }
 
@@ -81,11 +85,15 @@ pub fn remove_skill_from_group(
     // 若该分组全局已激活，同步到全局
     if let Ok(Some(group)) = app_state.db.get_skill_group(&group_id) {
         if group.is_active {
-            let _ = SkillGroupService::sync_active_groups_to_global(&app_state.db);
+            if let Err(e) = SkillGroupService::sync_active_groups_to_global(&app_state.db) {
+                log::warn!("skill_to_group: 全局同步失败: {e}");
+            }
         }
     }
     // 同步到绑定该分组的工作空间
-    let _ = WorkspaceSkillService::sync_workspaces_for_group(&app_state.db, &group_id);
+    if let Err(e) = WorkspaceSkillService::sync_workspaces_for_group(&app_state.db, &group_id) {
+        log::warn!("skill_to_group: 工作空间同步失败: {e}");
+    }
     Ok(())
 }
 

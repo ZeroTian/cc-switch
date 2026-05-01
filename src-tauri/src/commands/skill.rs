@@ -85,7 +85,6 @@ pub fn restore_skill_backup(
 }
 
 /// 切换 Skill 的应用启用状态
-/// 如果当前有激活的分组，手动修改会自动清除分组激活状态和快照
 #[tauri::command]
 pub fn toggle_skill_app(
     id: String,
