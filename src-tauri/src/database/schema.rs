@@ -542,6 +542,11 @@ impl Database {
                         Self::migrate_v15_to_v16(conn)?;
                         Self::set_user_version(conn, 16)?;
                     }
+                    16 => {
+                        log::info!("迁移数据库从 v16 到 v17（补全 usage_daily_rollups 缺失列）");
+                        Self::migrate_v16_to_v17(conn)?;
+                        Self::set_user_version(conn, 17)?;
+                    }
                     _ => {
                         return Err(AppError::Database(format!(
                             "未知的数据库版本 {version}，无法迁移到 {SCHEMA_VERSION}"
@@ -1311,6 +1316,51 @@ impl Database {
         Ok(())
     }
 
+    /// v10 -> v11: usage_daily_rollups 主键添加 request_model 和 pricing_model 维度
+    ///
+    /// 旧表主键为 (date, app_type, provider_id, model)，缺少模型别名与计价模型维度。
+    /// SQLite 不支持 ALTER PRIMARY KEY，通过重建表完成。
+    fn migrate_v10_to_v11(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "usage_daily_rollups")?
+            && !Self::has_column(conn, "usage_daily_rollups", "request_model")?
+        {
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS usage_daily_rollups_new (
+                    date TEXT NOT NULL,
+                    app_type TEXT NOT NULL,
+                    provider_id TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    request_model TEXT NOT NULL DEFAULT '',
+                    pricing_model TEXT NOT NULL DEFAULT '',
+                    request_count INTEGER NOT NULL DEFAULT 0,
+                    success_count INTEGER NOT NULL DEFAULT 0,
+                    input_tokens INTEGER NOT NULL DEFAULT 0,
+                    output_tokens INTEGER NOT NULL DEFAULT 0,
+                    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+                    cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                    total_cost_usd TEXT NOT NULL DEFAULT '0',
+                    avg_latency_ms INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (date, app_type, provider_id, model, request_model, pricing_model)
+                );
+                INSERT OR IGNORE INTO usage_daily_rollups_new
+                    SELECT date, app_type, provider_id, model,
+                        '', '',
+                        request_count, success_count,
+                        input_tokens, output_tokens,
+                        cache_read_tokens, cache_creation_tokens,
+                        total_cost_usd, avg_latency_ms
+                    FROM usage_daily_rollups;
+                DROP TABLE usage_daily_rollups;
+                ALTER TABLE usage_daily_rollups_new RENAME TO usage_daily_rollups;",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        }
+        log::info!(
+            "v10 -> v11 迁移完成：usage_daily_rollups 已添加 request_model、pricing_model 维度"
+        );
+        Ok(())
+    }
+
     fn migrate_v11_to_v12(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS skill_groups (
@@ -1331,18 +1381,43 @@ impl Database {
                 FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
             );",
         )
-        .map_err(|e| AppError::Database(e.to_string()))
-    }
+        .map_err(|e| AppError::Database(e.to_string()))?;
 
-    fn migrate_v11_to_v12(conn: &Connection) -> Result<(), AppError> {
-        conn.execute_batch(
-            "ALTER TABLE skill_groups ADD COLUMN enabled_claude BOOLEAN NOT NULL DEFAULT 1;
-             ALTER TABLE skill_groups ADD COLUMN enabled_codex BOOLEAN NOT NULL DEFAULT 0;
-             ALTER TABLE skill_groups ADD COLUMN enabled_gemini BOOLEAN NOT NULL DEFAULT 0;
-             ALTER TABLE skill_groups ADD COLUMN enabled_opencode BOOLEAN NOT NULL DEFAULT 0;
-             ALTER TABLE skill_groups ADD COLUMN enabled_hermes BOOLEAN NOT NULL DEFAULT 0;",
-        )
-        .map_err(|e| AppError::Database(e.to_string()))
+        // 添加 app 开关列 —— 仿照其他迁移使用 add_column_if_missing，
+        // 避免全新安装时 create_tables_on_conn 已包含这些列导致 ALTER TABLE 报 duplicate column。
+        Self::add_column_if_missing(
+            conn,
+            "skill_groups",
+            "enabled_claude",
+            "BOOLEAN NOT NULL DEFAULT 1",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "skill_groups",
+            "enabled_codex",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "skill_groups",
+            "enabled_gemini",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "skill_groups",
+            "enabled_opencode",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "skill_groups",
+            "enabled_hermes",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+
+        log::info!("v11 -> v12 迁移完成：技能分组添加 app 开关");
+        Ok(())
     }
 
     fn migrate_v12_to_v13(conn: &Connection) -> Result<(), AppError> {
@@ -1381,17 +1456,52 @@ impl Database {
 
     fn migrate_v14_to_v15(conn: &Connection) -> Result<(), AppError> {
         // 用 RECREATE 模式给 workspaces.path 加 UNIQUE 约束（SQLite 不支持 ALTER ADD UNIQUE）
+        //
+        // ⚠️ SQLite 在事务/savepoint 内会忽略 PRAGMA foreign_keys 变更，因此不能依赖
+        //    PRAGMA foreign_keys = OFF 来绕过外键检查。正确做法：先保存引用表数据、
+        //    删除引用表，重建 workspaces 后再恢复引用表。
+        //
+        // ⚠️ INSERT OR IGNORE 按 UNIQUE(path) 去重时会丢弃部分 workspace 行，
+        //    被丢弃 ID 的 workspace_groups 关联需重映射到保留的 ID，而非简单丢弃。
+        //    步骤：保存旧表 → 重建 → 用 (旧ID→路径→新ID) 映射更新备份 → 删除残余孤儿。
         conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS workspaces_new (
+            "CREATE TABLE IF NOT EXISTS workspace_groups_backup AS SELECT * FROM workspace_groups;
+             DROP TABLE IF EXISTS workspace_groups;
+             -- 保存旧 workspaces 用于后续 ID 重映射
+             CREATE TABLE IF NOT EXISTS workspaces_old AS SELECT * FROM workspaces;
+             CREATE TABLE IF NOT EXISTS workspaces_new (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 path TEXT NOT NULL UNIQUE,
                 created_at INTEGER NOT NULL DEFAULT 0,
                 updated_at INTEGER NOT NULL DEFAULT 0
-            );
-            INSERT OR IGNORE INTO workspaces_new SELECT id, name, path, created_at, updated_at FROM workspaces;
-            DROP TABLE workspaces;
-            ALTER TABLE workspaces_new RENAME TO workspaces;",
+             );
+             -- 同路径保留 ID 最小的那条完整行（丢弃的 ID 后续重映射）
+             INSERT INTO workspaces_new (id, name, path, created_at, updated_at)
+                SELECT w.id, w.name, w.path, w.created_at, w.updated_at
+                FROM workspaces_old w
+                WHERE w.id = (SELECT MIN(w2.id) FROM workspaces_old w2 WHERE w2.path = w.path);
+             DROP TABLE workspaces;
+             ALTER TABLE workspaces_new RENAME TO workspaces;
+             -- 重映射：备份中引用被丢弃 ID 的行，改成引用同路径保留的 ID
+             UPDATE workspace_groups_backup SET workspace_id = (
+                SELECT w.id FROM workspaces w, workspaces_old wo
+                WHERE wo.id = workspace_groups_backup.workspace_id
+                  AND w.path = wo.path
+                LIMIT 1
+             ) WHERE workspace_id NOT IN (SELECT id FROM workspaces);
+             DROP TABLE workspaces_old;
+             -- 删除映射后仍悬挂的行（理论上已不存在，保留安全网）
+             DELETE FROM workspace_groups_backup WHERE workspace_id NOT IN (SELECT id FROM workspaces);
+             CREATE TABLE IF NOT EXISTS workspace_groups (
+                workspace_id TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, group_id),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE
+             );
+             INSERT OR IGNORE INTO workspace_groups SELECT * FROM workspace_groups_backup;
+             DROP TABLE workspace_groups_backup;",
         )
         .map_err(|e| AppError::Database(e.to_string()))
     }
@@ -1408,6 +1518,62 @@ impl Database {
              );",
         )
         .map_err(|e| AppError::Database(e.to_string()))
+    }
+
+    /// v16 -> v17: 补全 usage_daily_rollups 缺失的 request_model / pricing_model 列。
+    ///
+    /// v10→v11 迁移是在本 patch 系列中新增的，此前已升级到 v11-16 的数据库
+    /// 从未执行过它，缺少这两个主键列导致 DAO 查询失败。本迁移无条件检查并补全。
+    fn migrate_v16_to_v17(conn: &Connection) -> Result<(), AppError> {
+        // 任一列缺失就触发重建，避免半完成迁移后两列状态不一致
+        let has_req = Self::has_column(conn, "usage_daily_rollups", "request_model")?;
+        let has_price = Self::has_column(conn, "usage_daily_rollups", "pricing_model")?;
+        if Self::table_exists(conn, "usage_daily_rollups")?
+            && (!has_req || !has_price)
+        {
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS usage_daily_rollups_new (
+                    date TEXT NOT NULL,
+                    app_type TEXT NOT NULL,
+                    provider_id TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    request_model TEXT NOT NULL DEFAULT '',
+                    pricing_model TEXT NOT NULL DEFAULT '',
+                    request_count INTEGER NOT NULL DEFAULT 0,
+                    success_count INTEGER NOT NULL DEFAULT 0,
+                    input_tokens INTEGER NOT NULL DEFAULT 0,
+                    output_tokens INTEGER NOT NULL DEFAULT 0,
+                    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+                    cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                    total_cost_usd TEXT NOT NULL DEFAULT '0',
+                    avg_latency_ms INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (date, app_type, provider_id, model, request_model, pricing_model)
+                );",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+            // 根据旧表列状态构建 SELECT，保留已有列的数据
+            let req_col = if has_req { "request_model" } else { "''" };
+            let price_col = if has_price { "pricing_model" } else { "''" };
+            let sql = format!(
+                "INSERT OR IGNORE INTO usage_daily_rollups_new
+                    SELECT date, app_type, provider_id, model,
+                        {req_col}, {price_col},
+                        request_count, success_count,
+                        input_tokens, output_tokens,
+                        cache_read_tokens, cache_creation_tokens,
+                        total_cost_usd, avg_latency_ms
+                    FROM usage_daily_rollups;
+                 DROP TABLE usage_daily_rollups;
+                 ALTER TABLE usage_daily_rollups_new RENAME TO usage_daily_rollups;"
+            );
+            conn.execute_batch(&sql)
+                .map_err(|e| AppError::Database(e.to_string()))?;
+        }
+        log::info!(
+            "v16 -> v17 迁移完成：usage_daily_rollups 已补全 request_model、pricing_model 列"
+        );
+        Ok(())
     }
 
     /// 插入默认模型定价数据
