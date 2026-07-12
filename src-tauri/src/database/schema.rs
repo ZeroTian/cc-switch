@@ -1395,14 +1395,37 @@ impl Database {
     }
 
     fn migrate_v13_to_v14(conn: &Connection) -> Result<(), AppError> {
-        conn.execute_batch(
-            "ALTER TABLE skill_groups ADD COLUMN enabled_claude BOOLEAN NOT NULL DEFAULT 1;
-             ALTER TABLE skill_groups ADD COLUMN enabled_codex BOOLEAN NOT NULL DEFAULT 0;
-             ALTER TABLE skill_groups ADD COLUMN enabled_gemini BOOLEAN NOT NULL DEFAULT 0;
-             ALTER TABLE skill_groups ADD COLUMN enabled_opencode BOOLEAN NOT NULL DEFAULT 0;
-             ALTER TABLE skill_groups ADD COLUMN enabled_hermes BOOLEAN NOT NULL DEFAULT 0;",
-        )
-        .map_err(|e| AppError::Database(e.to_string()))
+        Self::add_column_if_missing(
+            conn,
+            "skill_groups",
+            "enabled_claude",
+            "BOOLEAN NOT NULL DEFAULT 1",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "skill_groups",
+            "enabled_codex",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "skill_groups",
+            "enabled_gemini",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "skill_groups",
+            "enabled_opencode",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "skill_groups",
+            "enabled_hermes",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+        Ok(())
     }
 
     fn migrate_v14_to_v15(conn: &Connection) -> Result<(), AppError> {
