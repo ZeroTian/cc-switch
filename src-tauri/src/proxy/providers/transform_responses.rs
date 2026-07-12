@@ -8,8 +8,37 @@
 //! - system prompt 使用 `instructions` 字段而非 system role message
 //! - usage 字段命名与 Anthropic 一致 (input_tokens/output_tokens)
 
-use crate::proxy::error::ProxyError;
+use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
 use serde_json::{json, Value};
+
+pub(crate) fn sanitize_anthropic_tool_use_input(name: &str, input: Value) -> Value {
+    if name != "Read" {
+        return input;
+    }
+
+    match input {
+        Value::Object(mut object) => {
+            if matches!(object.get("pages"), Some(Value::String(value)) if value.is_empty()) {
+                object.remove("pages");
+            }
+            Value::Object(object)
+        }
+        other => other,
+    }
+}
+
+pub(crate) fn sanitize_anthropic_tool_use_input_json(name: &str, raw: &str) -> String {
+    if name != "Read" || raw.is_empty() {
+        return raw.to_string();
+    }
+
+    let Ok(input) = serde_json::from_str::<Value>(raw) else {
+        return raw.to_string();
+    };
+
+    serde_json::to_string(&sanitize_anthropic_tool_use_input(name, input))
+        .unwrap_or_else(|_| raw.to_string())
+}
 
 /// Anthropic 请求 → OpenAI Responses 请求
 ///
@@ -326,6 +355,23 @@ pub(crate) fn build_anthropic_usage_from_responses(usage: Option<&Value>) -> Val
         result["cache_creation_input_tokens"] = v.clone();
     }
 
+    // OpenAI/Responses 的 input(prompt_tokens/input_tokens)含缓存命中，Anthropic input_tokens 不含
+    // → 减去 cache_read 与 cache_creation，使其成为 fresh input。本函数在计量意义上是 claude 专属
+    // （Codex Responses 透传走 from_codex_response_*，不调用本函数），故可安全在此扣减。三桶互斥，
+    // 恒等：input + cache_read + cache_creation == 上游 input(inclusive)。与 build_anthropic_usage_json
+    // (#2774) 及 transform_gemini 的 saturating_sub 对称；一处同时覆盖非流式与流式(streaming_responses)。
+    let cached = result
+        .get("cache_read_input_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let cache_creation = result
+        .get("cache_creation_input_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    if cached > 0 || cache_creation > 0 {
+        result["input_tokens"] = json!(input.saturating_sub(cached).saturating_sub(cache_creation));
+    }
+
     result
 }
 
@@ -412,7 +458,7 @@ fn convert_messages_to_input(messages: &[Value]) -> Result<Vec<Value>, ProxyErro
                                 "type": "function_call",
                                 "call_id": id,
                                 "name": name,
-                                "arguments": serde_json::to_string(&arguments).unwrap_or_default()
+                                "arguments": canonical_json_string(&arguments)
                             }));
                         }
 
@@ -433,7 +479,7 @@ fn convert_messages_to_input(messages: &[Value]) -> Result<Vec<Value>, ProxyErro
                                 .unwrap_or("");
                             let output = match block.get("content") {
                                 Some(Value::String(s)) => s.clone(),
-                                Some(v) => serde_json::to_string(v).unwrap_or_default(),
+                                Some(v) => canonical_json_string(v),
                                 None => String::new(),
                             };
 
@@ -514,6 +560,7 @@ pub fn responses_to_anthropic(body: Value) -> Result<Value, ProxyError> {
                     .and_then(|a| a.as_str())
                     .unwrap_or("{}");
                 let input: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+                let input = sanitize_anthropic_tool_use_input(name, input);
 
                 content.push(json!({
                     "type": "tool_use",
@@ -723,8 +770,49 @@ mod tests {
         assert_eq!(result["tools"][0]["type"], "function");
         assert_eq!(result["tools"][0]["name"], "get_weather");
         assert!(result["tools"][0].get("parameters").is_some());
+        assert_eq!(result["tools"][0]["parameters"]["type"], json!("object"));
+        assert_eq!(
+            result["tools"][0]["parameters"]["properties"]["location"]["type"],
+            json!("string")
+        );
         // input_schema should not appear
         assert!(result["tools"][0].get("input_schema").is_none());
+    }
+
+    #[test]
+    fn test_anthropic_to_responses_defaults_missing_tool_schema_type() {
+        let input = json!({
+            "model": "gpt-4o",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Weather?"}],
+            "tools": [{
+                "name": "get_weather",
+                "description": "Get weather info",
+                "input_schema": {"properties": {"location": {"type": "string"}}}
+            }]
+        });
+
+        let result = anthropic_to_responses(input, None, false, false).unwrap();
+        let parameters = &result["tools"][0]["parameters"];
+        assert_eq!(parameters["type"], json!("object"));
+        assert_eq!(
+            parameters["properties"]["location"]["type"],
+            json!("string")
+        );
+    }
+
+    #[test]
+    fn test_anthropic_to_responses_defaults_empty_tool_schema() {
+        let input = json!({
+            "model": "gpt-4o",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Do work"}],
+            "tools": [{"name": "do_work", "input_schema": {}}]
+        });
+
+        let result = anthropic_to_responses(input, None, false, false).unwrap();
+        let parameters = &result["tools"][0]["parameters"];
+        assert_eq!(parameters, &json!({"type": "object", "properties": {}}));
     }
 
     #[test]
@@ -906,6 +994,56 @@ mod tests {
     }
 
     #[test]
+    fn test_responses_to_anthropic_read_drops_empty_pages() {
+        let input = json!({
+            "id": "resp_read",
+            "object": "response",
+            "status": "completed",
+            "model": "gpt-5.5",
+            "output": [{
+                "type": "function_call",
+                "id": "fc_read",
+                "call_id": "call_read",
+                "name": "Read",
+                "arguments": "{\"file_path\":\"/tmp/demo.py\",\"limit\":2000,\"offset\":0,\"pages\":\"\"}",
+                "status": "completed"
+            }]
+        });
+
+        let result = responses_to_anthropic(input).unwrap();
+        let tool_input = &result["content"][0]["input"];
+
+        assert_eq!(result["content"][0]["type"], "tool_use");
+        assert_eq!(result["content"][0]["name"], "Read");
+        assert_eq!(tool_input["file_path"], "/tmp/demo.py");
+        assert_eq!(tool_input["limit"], 2000);
+        assert_eq!(tool_input["offset"], 0);
+        assert!(tool_input.get("pages").is_none());
+    }
+
+    #[test]
+    fn test_responses_to_anthropic_preserves_empty_strings_for_other_tools() {
+        let input = json!({
+            "id": "resp_other",
+            "object": "response",
+            "status": "completed",
+            "model": "gpt-5.5",
+            "output": [{
+                "type": "function_call",
+                "id": "fc_other",
+                "call_id": "call_other",
+                "name": "search",
+                "arguments": "{\"query\":\"\"}",
+                "status": "completed"
+            }]
+        });
+
+        let result = responses_to_anthropic(input).unwrap();
+
+        assert_eq!(result["content"][0]["input"]["query"], "");
+    }
+
+    #[test]
     fn test_responses_to_anthropic_with_refusal_block() {
         let input = json!({
             "id": "resp_123",
@@ -1076,7 +1214,8 @@ mod tests {
         });
 
         let result = responses_to_anthropic(input).unwrap();
-        assert_eq!(result["usage"]["input_tokens"], 100);
+        // input_tokens(100) 含 cached(80)，转换后 input 应为 fresh = 100 - 80 = 20
+        assert_eq!(result["usage"]["input_tokens"], 20);
         assert_eq!(result["usage"]["output_tokens"], 50);
         assert_eq!(result["usage"]["cache_read_input_tokens"], 80);
     }
@@ -1100,6 +1239,9 @@ mod tests {
         });
 
         let result = responses_to_anthropic(input).unwrap();
+        // cache_read(60)+cache_creation(20) 均从 input(100) 扣除，fresh = 100 - 60 - 20 = 20
+        // 守恒：input(20) + cache_read(60) + cache_creation(20) == 上游 input(100)
+        assert_eq!(result["usage"]["input_tokens"], 20);
         assert_eq!(result["usage"]["cache_read_input_tokens"], 60);
         assert_eq!(result["usage"]["cache_creation_input_tokens"], 20);
     }
@@ -1562,7 +1704,8 @@ mod tests {
                 "cached_tokens": 80
             }
         })));
-        assert_eq!(result["input_tokens"], json!(100));
+        // input_tokens(100) 含 nested cached(80)，转换后 input 应为 fresh = 100 - 80 = 20
+        assert_eq!(result["input_tokens"], json!(20));
         assert_eq!(result["output_tokens"], json!(50));
         assert_eq!(result["cache_read_input_tokens"], json!(80));
     }
@@ -1577,7 +1720,24 @@ mod tests {
             },
             "cache_read_input_tokens": 100
         })));
+        // 直传 cache_read(100) 优先于 nested(80)；input(100) - 100 = 0（fresh）
+        assert_eq!(result["input_tokens"], json!(0));
         assert_eq!(result["cache_read_input_tokens"], json!(100)); // Direct field overrides nested
+    }
+
+    #[test]
+    fn test_build_usage_clamps_input_when_cache_exceeds_input() {
+        // input(100) < cache_read(60)+cache_creation(50)=110：saturating 钳到 0，防下溢。
+        // 钉桩：阻止未来把 saturating_sub 误改成普通减法(debug panic / release wrap)。
+        let result = build_anthropic_usage_from_responses(Some(&json!({
+            "input_tokens": 100,
+            "output_tokens": 10,
+            "cache_read_input_tokens": 60,
+            "cache_creation_input_tokens": 50
+        })));
+        assert_eq!(result["input_tokens"], json!(0));
+        assert_eq!(result["cache_read_input_tokens"], json!(60));
+        assert_eq!(result["cache_creation_input_tokens"], json!(50));
     }
 
     #[test]

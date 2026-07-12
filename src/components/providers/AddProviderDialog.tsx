@@ -17,6 +17,7 @@ import { UniversalProviderPanel } from "@/components/universal";
 import { providerPresets } from "@/config/claudeProviderPresets";
 import { codexProviderPresets } from "@/config/codexProviderPresets";
 import { geminiProviderPresets } from "@/config/geminiProviderPresets";
+import { claudeDesktopProviderPresets } from "@/config/claudeDesktopProviderPresets";
 import { extractCodexBaseUrl } from "@/utils/providerConfigUtils";
 import type { OpenClawSuggestedDefaults } from "@/config/openclawProviderPresets";
 import type { UniversalProviderPreset } from "@/config/universalProviderPresets";
@@ -29,6 +30,7 @@ interface AddProviderDialogProps {
     provider: Omit<Provider, "id"> & {
       providerKey?: string;
       suggestedDefaults?: OpenClawSuggestedDefaults;
+      ensureClaudeDesktopOfficialSeed?: boolean;
     },
   ) => Promise<void> | void;
 }
@@ -42,7 +44,10 @@ export function AddProviderDialog({
   const { t } = useTranslation();
   // OpenCode and OpenClaw don't support universal providers
   const showUniversalTab =
-    appId !== "opencode" && appId !== "openclaw" && appId !== "hermes";
+    appId !== "opencode" &&
+    appId !== "openclaw" &&
+    appId !== "hermes" &&
+    appId !== "claude-desktop";
   const [activeTab, setActiveTab] = useState<"app-specific" | "universal">(
     "app-specific",
   );
@@ -55,14 +60,6 @@ export function AddProviderDialog({
     async (provider: UniversalProvider) => {
       try {
         await universalProvidersApi.upsert(provider);
-        toast.success(
-          t("universalProvider.addSuccess", {
-            defaultValue: "统一供应商添加成功",
-          }),
-        );
-        setUniversalFormOpen(false);
-        setSelectedUniversalPreset(null);
-        onOpenChange(false);
       } catch (error) {
         console.error(
           "[AddProviderDialog] Failed to save universal provider",
@@ -73,7 +70,31 @@ export function AddProviderDialog({
             defaultValue: "统一供应商添加失败",
           }),
         );
+        return;
       }
+
+      try {
+        await universalProvidersApi.sync(provider.id);
+        toast.success(
+          t("universalProvider.addedAndSynced", {
+            defaultValue: "统一供应商已添加并同步",
+          }),
+        );
+      } catch (error) {
+        console.error(
+          "[AddProviderDialog] Provider saved but sync failed",
+          error,
+        );
+        toast.warning(
+          t("universalProvider.addedButSyncFailed", {
+            defaultValue: "统一供应商已添加，但同步失败",
+          }),
+        );
+      }
+
+      setUniversalFormOpen(false);
+      setSelectedUniversalPreset(null);
+      onOpenChange(false);
     },
     [t, onOpenChange],
   );
@@ -94,6 +115,7 @@ export function AddProviderDialog({
       const providerData: Omit<Provider, "id"> & {
         providerKey?: string;
         suggestedDefaults?: OpenClawSuggestedDefaults;
+        ensureClaudeDesktopOfficialSeed?: boolean;
       } = {
         name: values.name.trim(),
         notes: values.notes?.trim() || undefined,
@@ -104,6 +126,16 @@ export function AddProviderDialog({
         ...(values.presetCategory ? { category: values.presetCategory } : {}),
         ...(values.meta ? { meta: values.meta } : {}),
       };
+
+      if (appId === "claude-desktop" && values.presetId) {
+        const presetIndex = parseInt(
+          values.presetId.replace("claude-desktop-", ""),
+        );
+        const preset = claudeDesktopProviderPresets[presetIndex];
+        providerData.ensureClaudeDesktopOfficialSeed =
+          values.presetCategory === "official" &&
+          preset?.category === "official";
+      }
 
       // OpenCode/OpenClaw: pass providerKey for ID generation
       if (
@@ -171,10 +203,31 @@ export function AddProviderDialog({
                 preset.endpointCandidates.forEach(addUrl);
               }
             }
+          } else if (appId === "claude-desktop") {
+            const presets = claudeDesktopProviderPresets;
+            const presetIndex = parseInt(
+              values.presetId.replace("claude-desktop-", ""),
+            );
+            if (
+              !isNaN(presetIndex) &&
+              presetIndex >= 0 &&
+              presetIndex < presets.length
+            ) {
+              const preset = presets[presetIndex];
+              if (Array.isArray(preset.endpointCandidates)) {
+                preset.endpointCandidates.forEach(addUrl);
+              }
+              addUrl(preset.baseUrl);
+            }
           }
         }
 
         if (appId === "claude") {
+          const env = parsedConfig.env as Record<string, any> | undefined;
+          if (env?.ANTHROPIC_BASE_URL) {
+            addUrl(env.ANTHROPIC_BASE_URL);
+          }
+        } else if (appId === "claude-desktop") {
           const env = parsedConfig.env as Record<string, any> | undefined;
           if (env?.ANTHROPIC_BASE_URL) {
             addUrl(env.ANTHROPIC_BASE_URL);
@@ -243,6 +296,9 @@ export function AddProviderDialog({
   const footer =
     !showUniversalTab || activeTab === "app-specific" ? (
       <>
+        <span className="mr-auto min-w-0 text-xs text-muted-foreground truncate">
+          {t("provider.addFooterHint")}
+        </span>
         <Button
           variant="outline"
           onClick={() => onOpenChange(false)}
@@ -285,6 +341,7 @@ export function AddProviderDialog({
       title={t("provider.addNewProvider")}
       onClose={() => onOpenChange(false)}
       footer={footer}
+      contentClassName="pt-3"
     >
       {showUniversalTab ? (
         <Tabs

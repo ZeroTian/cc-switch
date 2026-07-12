@@ -62,6 +62,10 @@ export interface UsageScript {
   baseUrl?: string; // 用量查询专用的 Base URL（通用和 NewAPI 模板使用）
   accessToken?: string; // 访问令牌（NewAPI 模板使用）
   userId?: string; // 用户ID（NewAPI 模板使用）
+  accessKeyId?: string; // 火山方舟 AccessKey ID（用量查询签名用，与推理 Key 分离）
+  secretAccessKey?: string; // 火山方舟 SecretAccessKey
+  teamOrganizationId?: string; // 智谱团队套餐组织 ID（请求头 bigmodel-organization）
+  teamProjectId?: string; // 智谱团队套餐项目 ID（请求头 bigmodel-project）
   codingPlanProvider?: string; // Coding Plan 供应商标识（如 "kimi", "zhipu", "minimax"）
   autoQueryInterval?: number; // 自动查询间隔（单位：分钟，0 表示禁用）
   autoIntervalMinutes?: number; // 自动查询间隔（分钟）- 别名字段
@@ -107,16 +111,12 @@ export interface UsageResult {
   error?: string;
 }
 
-// 供应商单独的模型测试配置
+// 供应商单独的连通检测配置（覆盖全局配置）
 export interface ProviderTestConfig {
   // 是否启用单独配置（false 时使用全局配置）
   enabled: boolean;
-  // 测试用的模型名称（覆盖全局配置）
-  testModel?: string;
   // 超时时间（秒）
   timeoutSecs?: number;
-  // 测试提示词
-  testPrompt?: string;
   // 降级阈值（毫秒）
   degradedThresholdMs?: number;
   // 最大重试次数
@@ -131,12 +131,63 @@ export interface AuthBinding {
   accountId?: string;
 }
 
+export interface ClaudeDesktopModelRoute {
+  model: string;
+  labelOverride?: string;
+  supports1m?: boolean;
+}
+
+export type CodexChatThinkingParam =
+  | "none"
+  | "thinking"
+  | "enable_thinking"
+  | "reasoning_split";
+
+export type CodexChatEffortParam =
+  | "none"
+  | "reasoning_effort"
+  // OpenRouter 原生归一化对象 reasoning:{effort}（区别于顶层 OpenAI 别名 reasoning_effort）
+  | "reasoning.effort";
+
+export type CodexChatEffortValueMode =
+  | "passthrough"
+  | "low_high"
+  | "deepseek"
+  // OpenRouter effort 枚举 xhigh|high|medium|low|minimal（无 max，max 钳到 xhigh）
+  | "openrouter";
+
+export type CodexChatReasoningOutputFormat =
+  | "auto"
+  | "reasoning_content"
+  | "reasoning"
+  | "reasoning_details"
+  | "think_tags";
+
+export interface CodexChatReasoning {
+  supportsThinking?: boolean;
+  supportsEffort?: boolean;
+  thinkingParam?: CodexChatThinkingParam;
+  effortParam?: CodexChatEffortParam;
+  effortValueMode?: CodexChatEffortValueMode;
+  // 声明性字段：标注上游 reasoning 回传位置。当前提取靠穷举字段，未读取此值（think_tags 尚未接线）。
+  outputFormat?: CodexChatReasoningOutputFormat;
+}
+
+export interface LocalProxyRequestOverrides {
+  headers?: Record<string, string>;
+  body?: Record<string, unknown>;
+}
+
 // 供应商元数据（字段名与后端一致，保持 snake_case）
 export interface ProviderMeta {
   // 自定义端点：以 URL 为键，值为端点信息
   custom_endpoints?: Record<string, CustomEndpoint>;
   // 是否在切换/同步到 live 时应用通用配置片段
   commonConfigEnabled?: boolean;
+  // Claude Desktop 3P 配置写入模式
+  claudeDesktopMode?: "direct" | "proxy";
+  // Claude Desktop 本地路由模式：Claude-safe route -> upstream model
+  claudeDesktopModelRoutes?: Record<string, ClaudeDesktopModelRoute>;
   // 用量查询脚本配置
   usage_script?: UsageScript;
   // 请求地址管理：测速后自动选择最佳端点
@@ -151,7 +202,7 @@ export interface ProviderMeta {
   costMultiplier?: string;
   // 供应商计费模式来源
   pricingModelSource?: string;
-  // Claude API 格式（仅 Claude 供应商使用）
+  // API 格式（Claude / Codex 供应商使用）
   // - "anthropic": 原生 Anthropic Messages API 格式，直接透传
   // - "openai_chat": OpenAI Chat Completions 格式，需要格式转换
   // - "openai_responses": OpenAI Responses API 格式，需要格式转换
@@ -171,6 +222,20 @@ export interface ProviderMeta {
   promptCacheKey?: string;
   // Codex OAuth FAST mode: injects service_tier="priority" on ChatGPT Codex requests
   codexFastMode?: boolean;
+  // Codex Responses -> Chat Completions reasoning capability metadata
+  codexChatReasoning?: CodexChatReasoning;
+  // Codex → Anthropic path: emulate the Claude Code client (disabled by default; only an explicit true enables it)
+  impersonateClaudeCode?: boolean;
+  // Codex → Anthropic path: override the Anthropic max_tokens (output ceiling).
+  // Codex does not forward model_max_output_tokens in the request body; without
+  // this the path falls back to a conservative 8192 default, which can truncate
+  // long/thinking-heavy responses. When set (>0) it takes precedence over the
+  // request value and the default.
+  maxOutputTokens?: number;
+  // Custom User-Agent for local proxy routing. Only applied by the local proxy.
+  customUserAgent?: string;
+  // Local proxy request overrides. Only applied by the local proxy after route transforms.
+  localProxyRequestOverrides?: LocalProxyRequestOverrides;
   // 供应商类型（用于识别 Copilot 等特殊供应商）
   providerType?: string;
   // GitHub Copilot 关联账号 ID（旧字段，保留兼容读取）
@@ -194,12 +259,34 @@ export type ClaudeApiFormat =
   | "openai_responses"
   | "gemini_native";
 
+// Codex API 格式类型
+// - "openai_responses": OpenAI Responses API 格式，直接透传
+// - "openai_chat": OpenAI Chat Completions 格式，需要本地路由转换
+// - "anthropic": native Anthropic Messages format, needs local routing to convert to Responses
+export type CodexApiFormat = "openai_responses" | "openai_chat" | "anthropic";
+
+export interface CodexCatalogModel {
+  model: string;
+  displayName?: string;
+  contextWindow?: string | number;
+  // Native Responses (direct) profile overrides for the generated
+  // model-catalogs.json. Ignored by the chat/proxy profile.
+  // e.g. MiniMax: supportsParallelToolCalls=true, inputModalities=["text","image"].
+  supportsParallelToolCalls?: boolean;
+  inputModalities?: string[];
+  // Vendor's OFFICIAL base_instructions (model identity / system preamble).
+  // Codex requires this field in every catalog entry; when omitted the backend
+  // falls back to a neutral default. e.g. MiMo "developed by Xiaomi".
+  baseInstructions?: string;
+}
+
 // Claude 认证字段类型
 export type ClaudeApiKeyField = "ANTHROPIC_AUTH_TOKEN" | "ANTHROPIC_API_KEY";
 
 // 主页面显示的应用配置
 export interface VisibleApps {
   claude: boolean;
+  "claude-desktop": boolean;
   codex: boolean;
   gemini: boolean;
   opencode: boolean;
@@ -224,6 +311,20 @@ export interface WebDavSyncSettings {
   baseUrl?: string;
   username?: string;
   password?: string;
+  remoteRoot?: string;
+  profile?: string;
+  status?: WebDavSyncStatus;
+}
+
+// S3 同步配置
+export interface S3SyncSettings {
+  enabled?: boolean;
+  autoSync?: boolean;
+  region?: string;
+  bucket?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  endpoint?: string;
   remoteRoot?: string;
   profile?: string;
   status?: WebDavSyncStatus;
@@ -269,10 +370,18 @@ export interface Settings {
   proxyConfirmed?: boolean;
   // User has confirmed the usage query first-run notice
   usageConfirmed?: boolean;
+  usageDashboardRefreshIntervalMs?: number;
   // User has confirmed the stream check first-run notice
   streamCheckConfirmed?: boolean;
   // Whether to show the failover toggle independently on the main page
   enableFailoverToggle?: boolean;
+  // Preserve Codex ChatGPT login in auth.json when switching third-party providers
+  preserveCodexOfficialAuthOnSwitch?: boolean;
+  // Run official Codex under the shared "custom" provider id so future
+  // sessions share one resume-history bucket with third-party providers
+  unifyCodexSessionHistory?: boolean;
+  // User opted in (enable dialog checkbox) to migrate existing official sessions
+  unifyCodexMigrateExisting?: boolean;
   // User has confirmed the failover toggle first-run notice
   failoverConfirmed?: boolean;
   // User has confirmed the first-run welcome notice
@@ -282,7 +391,7 @@ export interface Settings {
   // User has confirmed the common config first-run notice
   commonConfigConfirmed?: boolean;
   // 首选语言（可选，默认中文）
-  language?: "en" | "zh" | "ja";
+  language?: "en" | "zh" | "zh-TW" | "ja";
 
   // 主页面显示的应用（默认全部显示）
   visibleApps?: VisibleApps;
@@ -304,6 +413,8 @@ export interface Settings {
   // ===== 当前供应商 ID（设备级）=====
   // 当前 Claude 供应商 ID（优先于数据库 is_current）
   currentProviderClaude?: string;
+  // 当前 Claude Desktop 供应商 ID（优先于数据库 is_current）
+  currentProviderClaudeDesktop?: string;
   // 当前 Codex 供应商 ID（优先于数据库 is_current）
   currentProviderCodex?: string;
   // 当前 Gemini 供应商 ID（优先于数据库 is_current）
@@ -318,6 +429,9 @@ export interface Settings {
   // ===== WebDAV v2 同步设置 =====
   webdavSync?: WebDavSyncSettings;
 
+  // ===== S3 同步设置 =====
+  s3Sync?: S3SyncSettings;
+
   // ===== 备份策略设置 =====
   // Auto-backup interval in hours (0=disabled, default 24)
   backupIntervalHours?: number;
@@ -330,6 +444,17 @@ export interface Settings {
   // Windows: "cmd" | "powershell" | "wt"
   // Linux: "gnome-terminal" | "konsole" | "xfce4-terminal" | "alacritty" | "kitty" | "ghostty"
   preferredTerminal?: string;
+
+  // ===== 本机自动迁移状态 =====
+  localMigrations?: {
+    codexThirdPartyHistoryProviderBucketV1?: {
+      completedAt: string;
+      targetProviderId: string;
+      sourceProviderIds?: string[];
+      migratedJsonlFiles?: number;
+      migratedStateRows?: number;
+    };
+  };
 }
 
 export interface SessionMeta {
@@ -369,6 +494,7 @@ export interface McpServerSpec {
 // v3.7.0: MCP 服务器应用启用状态
 export interface McpApps {
   claude: boolean;
+  "claude-desktop"?: boolean;
   codex: boolean;
   gemini: boolean;
   opencode: boolean;
@@ -531,6 +657,9 @@ export interface OpenClawModel {
   };
   contextWindow?: number;
   maxTokens?: number; // 最大输出 token 数
+  compat?: {
+    maxTokensField?: string; // 最大输出 token 请求字段名（如 "max_tokens"）
+  };
 }
 
 // OpenClaw 默认模型配置（agents.defaults.model）
