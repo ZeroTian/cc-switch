@@ -260,5 +260,4 @@ impl Database {
         }
         Ok(count)
     }
-
 }

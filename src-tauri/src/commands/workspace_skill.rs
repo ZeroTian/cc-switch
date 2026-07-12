@@ -1,7 +1,7 @@
 //! 工作空间命令层
 
 use crate::database::dao::workspaces::Workspace;
-use crate::services::workspace_skill::{WorkspaceBindings, WorkspaceSkillService};
+use crate::services::workspace_skill::WorkspaceSkillService;
 use crate::store::AppState;
 use chrono::Utc;
 use tauri::State;
@@ -18,19 +18,19 @@ pub fn create_workspace(
     path: String,
     app_state: State<'_, AppState>,
 ) -> Result<Workspace, String> {
-    if path.trim() == "~" {
-        return Err("路径不能为 ~（保留给用户级别空间）".to_string());
-    }
     let now = Utc::now().timestamp();
     let ws = Workspace {
         id: Uuid::new_v4().to_string(),
         name,
         path,
-        is_user_level: false,
         created_at: now,
         updated_at: now,
+        group_ids: vec![],
     };
-    app_state.db.create_workspace(&ws).map_err(|e| e.to_string())?;
+    app_state
+        .db
+        .create_workspace(&ws)
+        .map_err(|e| e.to_string())?;
     Ok(ws)
 }
 
@@ -47,35 +47,60 @@ pub fn update_workspace(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("工作空间不存在: {id}"))?;
     ws.name = name;
-    // 用户级别空间：path 由数据库维护，忽略调用方传入的值
-    if !ws.is_user_level {
-        ws.path = path;
-    }
+    ws.path = path;
     ws.updated_at = Utc::now().timestamp();
-    app_state.db.update_workspace(&ws).map_err(|e| e.to_string())?;
+    app_state
+        .db
+        .update_workspace(&ws)
+        .map_err(|e| e.to_string())?;
     Ok(ws)
 }
 
 #[tauri::command]
 pub fn delete_workspace(id: String, app_state: State<'_, AppState>) -> Result<(), String> {
-    if let Ok(Some(ws)) = app_state.db.get_workspace(&id) {
-        if ws.is_user_level {
-            return Err("用户级别空间不可删除".to_string());
-        }
-    }
-    app_state.db.delete_workspace(&id).map_err(|e| e.to_string())
+    app_state
+        .db
+        .delete_workspace(&id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_workspace_bindings(
+pub fn add_group_to_workspace(
+    workspace_id: String,
+    group_id: String,
+    app_state: State<'_, AppState>,
+) -> Result<(), String> {
+    app_state
+        .db
+        .add_group_to_workspace(&workspace_id, &group_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn remove_group_from_workspace(
+    workspace_id: String,
+    group_id: String,
+    app_state: State<'_, AppState>,
+) -> Result<(), String> {
+    app_state
+        .db
+        .remove_group_from_workspace(&workspace_id, &group_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_workspace_group_ids(
     workspace_id: String,
     app_state: State<'_, AppState>,
-) -> Result<WorkspaceBindings, String> {
-    WorkspaceSkillService::get_bindings(&app_state.db, &workspace_id).map_err(|e| e.to_string())
+) -> Result<Vec<String>, String> {
+    app_state
+        .db
+        .get_workspace_group_ids(&workspace_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn toggle_workspace_group(
+pub fn toggle_group_in_workspace(
     workspace_id: String,
     group_id: String,
     active: bool,
@@ -86,21 +111,12 @@ pub fn toggle_workspace_group(
 }
 
 #[tauri::command]
-pub fn toggle_workspace_skill(
+pub fn get_workspace_active_group_ids(
     workspace_id: String,
-    skill_id: String,
-    active: bool,
     app_state: State<'_, AppState>,
-) -> Result<(), String> {
-    WorkspaceSkillService::toggle_skill(&app_state.db, &workspace_id, &skill_id, active)
+) -> Result<Vec<String>, String> {
+    app_state
+        .db
+        .get_workspace_active_group_ids(&workspace_id)
         .map_err(|e| e.to_string())
 }
-
-#[tauri::command]
-pub fn reorder_workspaces(
-    ordered_ids: Vec<String>,
-    app_state: State<'_, AppState>,
-) -> Result<(), String> {
-    app_state.db.reorder_workspaces(&ordered_ids).map_err(|e| e.to_string())
-}
-

@@ -110,9 +110,12 @@ const UnifiedSkillsPanel = React.forwardRef<
   } = useCheckSkillUpdates();
   const updateSkillMutation = useUpdateSkill();
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
-  const [activeTab, setActiveTab] = useState<"installed" | "groups" | "workspaces">("installed");
+  const [activeTab, setActiveTab] = useState<
+    "installed" | "groups" | "workspaces"
+  >("installed");
   const [searchQuery, setSearchQuery] = useState("");
   const { data: groups = [] } = useSkillGroups();
+  const activeGroups = groups.filter((group) => group.isActive);
 
   const updatesMap = useMemo(() => {
     const map: Record<string, SkillUpdateInfo> = {};
@@ -143,7 +146,7 @@ const UnifiedSkillsPanel = React.forwardRef<
     return skills.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
-        (s.description ?? "").toLowerCase().includes(q)
+        (s.description ?? "").toLowerCase().includes(q),
     );
   }, [skills, searchQuery]);
 
@@ -234,7 +237,9 @@ const UnifiedSkillsPanel = React.forwardRef<
           console.warn(`绑定 skill ${skill.name} 到用户级别空间失败: ${e}`);
         }
       }
-      queryClient.invalidateQueries({ queryKey: ["workspaces", "bindings", "user"] });
+      queryClient.invalidateQueries({
+        queryKey: ["workspaces", "bindings", "user"],
+      });
       toast.success(t("skills.importSuccess", { count: imported.length }), {
         closeButton: true,
       });
@@ -430,58 +435,73 @@ const UnifiedSkillsPanel = React.forwardRef<
           {t("workspaces.title", "工作空间")}
         </button>
       </div>
-      {activeTab === "installed" && <div className="flex items-center justify-between">
-        <AppCountBar
-          totalLabel={t("skills.installed", { count: skills?.length || 0 })}
-          counts={enabledCounts}
-          appIds={SKILLS_APP_IDS}
-        />
-        <div className="flex items-center gap-1.5">
-          <div
-            className="transition-all duration-300 ease-out overflow-hidden"
-            style={{
-              maxWidth:
-                skillUpdates && skillUpdates.length > 0 ? "200px" : "0px",
-              opacity: skillUpdates && skillUpdates.length > 0 ? 1 : 0,
-            }}
-          >
+      {activeTab === "installed" && (
+        <div className="flex items-center justify-between">
+          <AppCountBar
+            totalLabel={t("skills.installed", { count: skills?.length || 0 })}
+            counts={enabledCounts}
+            appIds={SKILLS_APP_IDS}
+          />
+          <div className="flex items-center gap-1.5">
+            <div
+              className="transition-all duration-300 ease-out overflow-hidden"
+              style={{
+                maxWidth:
+                  skillUpdates && skillUpdates.length > 0 ? "200px" : "0px",
+                opacity: skillUpdates && skillUpdates.length > 0 ? 1 : 0,
+              }}
+            >
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1 whitespace-nowrap"
+                onClick={handleUpdateAll}
+                disabled={isUpdatingAll || updateSkillMutation.isPending}
+              >
+                {isUpdatingAll ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={12} />
+                )}
+                {isUpdatingAll
+                  ? t("skills.updatingAll")
+                  : t("skills.updateAll", { count: skillUpdates?.length ?? 0 })}
+              </Button>
+            </div>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="h-7 text-xs gap-1 whitespace-nowrap"
-              onClick={handleUpdateAll}
-              disabled={isUpdatingAll || updateSkillMutation.isPending}
+              className="h-7 text-xs gap-1"
+              onClick={handleCheckUpdates}
+              disabled={isCheckingUpdates || !skills || skills.length === 0}
             >
-              {isUpdatingAll ? (
+              {isCheckingUpdates ? (
                 <Loader2 size={12} className="animate-spin" />
               ) : (
                 <RefreshCw size={12} />
               )}
-              {isUpdatingAll
-                ? t("skills.updatingAll")
-                : t("skills.updateAll", { count: skillUpdates?.length ?? 0 })}
+              {isCheckingUpdates
+                ? t("skills.checkingUpdates")
+                : t("skills.checkUpdates")}
             </Button>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs gap-1"
-            onClick={handleCheckUpdates}
-            disabled={isCheckingUpdates || !skills || skills.length === 0}
-          >
-            {isCheckingUpdates ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <RefreshCw size={12} />
-            )}
-            {isCheckingUpdates
-              ? t("skills.checkingUpdates")
-              : t("skills.checkUpdates")}
-          </Button>
         </div>
-      </div>}
+      )}
+
+      {activeGroups.length > 0 && activeTab === "installed" && (
+        <div className="flex items-center gap-2 mb-2 pl-3 pr-2 py-1.5 border-l-2 border-primary text-sm">
+          <span className="text-muted-foreground">
+            {t("skillGroups.activeLabelPrefix", "分组：")}
+          </span>
+          <span className="font-medium text-foreground truncate flex-1">
+            {t("skillGroups.activeCount", "{{count}} 个已激活", {
+              count: activeGroups.length,
+            })}
+          </span>
+        </div>
+      )}
 
       {activeTab === "installed" ? (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -496,48 +516,48 @@ const UnifiedSkillsPanel = React.forwardRef<
             />
           </div>
           <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
-          {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">
-              {t("skills.loading")}
-            </div>
-          ) : !skills || skills.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-                <Sparkles size={24} className="text-muted-foreground" />
+            {isLoading ? (
+              <div className="text-center py-12 text-muted-foreground">
+                {t("skills.loading")}
               </div>
-              <h3 className="text-lg font-medium text-foreground mb-2">
-                {t("skills.noInstalled")}
-              </h3>
-              <p className="text-muted-foreground text-sm">
-                {t("skills.noInstalledDescription")}
-              </p>
-            </div>
-          ) : filteredSkills.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">
-              {t("skills.noSearchResult", "没有匹配的技能")}
-            </div>
-          ) : (
-            <TooltipProvider delayDuration={300}>
-              <div className="rounded-xl border border-border-default overflow-hidden">
-                {filteredSkills.map((skill, index) => (
-                  <InstalledSkillListItem
-                    key={skill.id}
-                    skill={skill}
-                    hasUpdate={!!updatesMap[skill.id]}
-                    isUpdating={
-                      updateSkillMutation.isPending &&
-                      updateSkillMutation.variables === skill.id
-                    }
-                    groupNames={skillGroupNamesMap[skill.id] ?? []}
-                    onToggleApp={handleToggleApp}
-                    onUninstall={() => handleUninstall(skill)}
-                    onUpdate={() => handleUpdateSkill(skill)}
-                    isLast={index === filteredSkills.length - 1}
-                  />
-                ))}
+            ) : !skills || skills.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
+                  <Sparkles size={24} className="text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-medium text-foreground mb-2">
+                  {t("skills.noInstalled")}
+                </h3>
+                <p className="text-muted-foreground text-sm">
+                  {t("skills.noInstalledDescription")}
+                </p>
               </div>
-            </TooltipProvider>
-          )}
+            ) : filteredSkills.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground text-sm">
+                {t("skills.noSearchResult", "没有匹配的技能")}
+              </div>
+            ) : (
+              <TooltipProvider delayDuration={300}>
+                <div className="rounded-xl border border-border-default overflow-hidden">
+                  {filteredSkills.map((skill, index) => (
+                    <InstalledSkillListItem
+                      key={skill.id}
+                      skill={skill}
+                      hasUpdate={!!updatesMap[skill.id]}
+                      isUpdating={
+                        updateSkillMutation.isPending &&
+                        updateSkillMutation.variables === skill.id
+                      }
+                      groupNames={skillGroupNamesMap[skill.id] ?? []}
+                      onToggleApp={handleToggleApp}
+                      onUninstall={() => handleUninstall(skill)}
+                      onUpdate={() => handleUpdateSkill(skill)}
+                      isLast={index === filteredSkills.length - 1}
+                    />
+                  ))}
+                </div>
+              </TooltipProvider>
+            )}
           </div>
         </div>
       ) : activeTab === "groups" ? (

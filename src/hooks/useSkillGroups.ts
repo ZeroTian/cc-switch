@@ -30,32 +30,7 @@ export function useUpdateSkillGroup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: skillGroupsApi.update,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["skillGroups"] });
-      qc.invalidateQueries({ queryKey: ["skills", "installed"] });
-      qc.invalidateQueries({ queryKey: ["workspaces", "bindings"] });
-    },
-  });
-}
-
-export function useReorderSkillGroups() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (orderedIds: string[]) => skillGroupsApi.reorder(orderedIds),
-    onMutate: async (orderedIds) => {
-      await qc.cancelQueries({ queryKey: ["skillGroups"] });
-      const previous = qc.getQueryData(["skillGroups"]);
-      qc.setQueryData(["skillGroups"], (old: import("@/lib/api/skills").SkillGroup[] | undefined) => {
-        if (!old) return old;
-        return orderedIds.map((id) => old.find((g) => g.id === id)!).filter(Boolean);
-      });
-      return { previous };
-    },
-    onError: (_err, _ids, ctx) => {
-      // 出错时回滚
-      if (ctx?.previous) qc.setQueryData(["skillGroups"], ctx.previous);
-    },
-    // 不在 onSettled 触发 refetch，乐观更新即最终状态，避免 refetch 回弹
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["skillGroups"] }),
   });
 }
 
@@ -63,9 +38,42 @@ export function useDeleteSkillGroup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => skillGroupsApi.delete(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["skillGroups"] }),
+  });
+}
+
+export function useSetGroupActive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      skillGroupsApi.setActive(id, active),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["skillGroups"] });
-      qc.invalidateQueries({ queryKey: ["workspaces", "bindings"] });
+      qc.invalidateQueries({ queryKey: ["skills", "installed"] });
+    },
+  });
+}
+
+export function useAddSkillToGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, skillId }: { groupId: string; skillId: string }) =>
+      skillGroupsApi.addSkill(groupId, skillId),
+    onSuccess: (_data, { groupId }) => {
+      qc.invalidateQueries({ queryKey: ["skillGroups"] });
+      qc.invalidateQueries({ queryKey: ["skillGroups", "members", groupId] });
+    },
+  });
+}
+
+export function useRemoveSkillFromGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, skillId }: { groupId: string; skillId: string }) =>
+      skillGroupsApi.removeSkill(groupId, skillId),
+    onSuccess: (_data, { groupId }) => {
+      qc.invalidateQueries({ queryKey: ["skillGroups"] });
+      qc.invalidateQueries({ queryKey: ["skillGroups", "members", groupId] });
     },
   });
 }

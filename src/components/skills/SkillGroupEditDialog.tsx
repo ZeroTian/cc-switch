@@ -10,64 +10,77 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Search } from "lucide-react";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { AppToggleGroup } from "@/components/common/AppToggleGroup";
+import { SKILLS_APP_IDS } from "@/config/appConfig";
 import { useInstalledSkills } from "@/hooks/useSkills";
-import { useGroupMemberIds } from "@/hooks/useSkillGroups";
-import type { SkillGroup } from "@/lib/api/skills";
+import {
+  useGroupMemberIds,
+  useAddSkillToGroup,
+  useRemoveSkillFromGroup,
+} from "@/hooks/useSkillGroups";
+import type { AppId } from "@/lib/api/types";
+import type { SkillGroup, SkillGroupApps } from "@/lib/api/skills";
+import { DEFAULT_GROUP_APPS } from "@/lib/api/skillGroups";
 
 interface Props {
   open: boolean;
   group: SkillGroup | null;
   onClose: () => void;
-  onSave: (params: { name: string; description?: string; memberIds: string[] }) => void;
+  onSave: (params: {
+    name: string;
+    description?: string;
+    apps: SkillGroupApps;
+  }) => void;
   saving?: boolean;
 }
 
-export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: Props) {
+export function SkillGroupEditDialog({
+  open,
+  group,
+  onClose,
+  onSave,
+  saving,
+}: Props) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [apps, setApps] = useState<SkillGroupApps>(DEFAULT_GROUP_APPS);
   const [search, setSearch] = useState("");
-  const [draftMemberIds, setDraftMemberIds] = useState<Set<string>>(new Set());
-
-  const { data: installedSkills = [] } = useInstalledSkills();
-  const { data: memberIds = [] } = useGroupMemberIds(group?.id ?? null);
 
   useEffect(() => {
     if (open) {
       setName(group?.name ?? "");
       setDescription(group?.description ?? "");
+      setApps(group?.apps ?? DEFAULT_GROUP_APPS);
       setSearch("");
-      setDraftMemberIds(new Set(memberIds));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, group]);
 
-  useEffect(() => {
-    if (open && memberIds.length > 0) {
-      setDraftMemberIds(new Set(memberIds));
+  const { data: installedSkills = [] } = useInstalledSkills();
+  const { data: memberIds = [] } = useGroupMemberIds(group?.id ?? null);
+  const addMutation = useAddSkillToGroup();
+  const removeMutation = useRemoveSkillFromGroup();
+
+  const filtered = installedSkills.filter(
+    (s) =>
+      s.name.toLowerCase().includes(search.toLowerCase()) ||
+      (s.description ?? "").toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const toggleMember = (skillId: string, checked: boolean) => {
+    if (!group) return;
+    if (checked) {
+      addMutation.mutate({ groupId: group.id, skillId });
+    } else {
+      removeMutation.mutate({ groupId: group.id, skillId });
     }
-  }, [memberIds, open]);
+  };
 
-  const filtered = installedSkills
-    .filter(
-      (s) =>
-        s.name.toLowerCase().includes(search.toLowerCase()) ||
-        (s.description ?? "").toLowerCase().includes(search.toLowerCase())
-    )
-    .sort((a, b) => {
-      const aChecked = draftMemberIds.has(a.id) ? 0 : 1;
-      const bChecked = draftMemberIds.has(b.id) ? 0 : 1;
-      return aChecked - bChecked;
-    });
-
-  const toggleMember = (skillId: string) => {
-    setDraftMemberIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(skillId)) next.delete(skillId);
-      else next.add(skillId);
-      return next;
-    });
+  const handleToggleApp = (app: AppId, enabled: boolean) => {
+    setApps((prev) => ({ ...prev, [app]: enabled }));
   };
 
   const handleSave = () => {
@@ -75,40 +88,55 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
     onSave({
       name: name.trim(),
       description: description.trim() || undefined,
-      memberIds: Array.from(draftMemberIds),
+      apps,
     });
   };
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg flex flex-col max-h-[80vh]" zIndex="top">
-        <DialogHeader className="shrink-0">
+      <DialogContent className="max-w-lg" zIndex="top">
+        <DialogHeader>
           <DialogTitle>
-            {group ? t("skillGroups.edit", "编辑分组") : t("skillGroups.create", "新建分组")}
+            {group
+              ? t("skillGroups.edit", "编辑分组")
+              : t("skillGroups.create", "新建分组")}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col min-h-0 px-6 py-4 gap-3 overflow-hidden">
-          <div className="shrink-0 space-y-3">
-            <Input
-              placeholder={t("skillGroups.namePlaceholder", "分组名称")}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <Textarea
-              placeholder={t("skillGroups.descriptionPlaceholder", "描述（可选）")}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-            />
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 min-h-0">
+          <Input
+            placeholder={t("skillGroups.namePlaceholder", "分组名称")}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Textarea
+            placeholder={t(
+              "skillGroups.descriptionPlaceholder",
+              "描述（可选）",
+            )}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              {t("skillGroups.appsLabel", "适用 Agent")}
+            </span>
+            <TooltipProvider delayDuration={300}>
+              <AppToggleGroup
+                apps={apps}
+                onToggle={handleToggleApp}
+                appIds={SKILLS_APP_IDS}
+              />
+            </TooltipProvider>
           </div>
 
           {group && (
-            <div className="flex flex-col min-h-0 gap-2">
-              <div className="text-sm font-medium shrink-0">
+            <div className="space-y-2">
+              <div className="text-sm font-medium">
                 {t("skillGroups.selectSkills", "选择 Skill")}
               </div>
-              <div className="relative shrink-0">
+              <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder={t("skillGroups.searchSkills", "搜索 Skill")}
@@ -117,25 +145,29 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
                   className="pl-8"
                 />
               </div>
-              <div className="flex-1 overflow-y-auto border rounded-md p-1.5 min-h-0">
+              <div className="space-y-1 border rounded-md p-2">
                 {filtered.length === 0 ? (
                   <div className="text-sm text-muted-foreground py-2 text-center">
                     {t("skillGroups.noSkills", "没有已安装的 Skill")}
                   </div>
                 ) : (
                   filtered.map((skill) => {
-                    const checked = draftMemberIds.has(skill.id);
+                    const checked = memberIds.includes(skill.id);
                     return (
-                      <button
-                        type="button"
+                      <label
                         key={skill.id}
-                        className={`w-full flex items-start gap-2 rounded px-2 py-1.5 text-left transition-colors ${
-                          checked ? "bg-primary/8 hover:bg-primary/12" : "hover:bg-accent"
-                        }`}
-                        onClick={() => toggleMember(skill.id)}
+                        className="flex items-start gap-2 cursor-pointer rounded px-1 py-1 hover:bg-accent"
                       >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => toggleMember(skill.id, !!v)}
+                          disabled={
+                            addMutation.isPending || removeMutation.isPending
+                          }
+                          className="mt-0.5"
+                        />
                         <div className="flex-1 min-w-0">
-                          <div className={`text-sm font-medium truncate ${checked ? "text-primary" : ""}`}>
+                          <div className="text-sm font-medium truncate">
                             {skill.name}
                           </div>
                           {skill.description && (
@@ -144,7 +176,7 @@ export function SkillGroupEditDialog({ open, group, onClose, onSave, saving }: P
                             </div>
                           )}
                         </div>
-                      </button>
+                      </label>
                     );
                   })
                 )}

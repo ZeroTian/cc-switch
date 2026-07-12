@@ -1362,7 +1362,11 @@ impl SkillService {
         log::info!("Skill {} 的 {:?} 状态已更新为 {}", skill.name, app, enabled);
 
         // 触发所有包含该 skill 的工作空间重新同步
-        if let Err(e) = crate::services::workspace_skill::WorkspaceSkillService::sync_workspaces_for_skill(db, id) {
+        if let Err(e) =
+            crate::services::workspace_skill::WorkspaceSkillService::sync_workspaces_for_skill(
+                db, id,
+            )
+        {
             log::warn!("toggle_app: 工作空间同步失败: {e}");
         }
 
@@ -2802,7 +2806,11 @@ impl SkillService {
         for skill in &skills {
             for app in &skill_apps {
                 if let Err(e) = Self::remove_from_app(&skill.directory, app) {
-                    log::warn!("disable_all: 移除 skill {} from {:?} 失败: {e}", skill.name, app);
+                    log::warn!(
+                        "disable_all: 移除 skill {} from {:?} 失败: {e}",
+                        skill.name,
+                        app
+                    );
                 }
             }
         }
@@ -2819,7 +2827,11 @@ impl SkillService {
                     let mut skill_failed = false;
                     for app in skill.apps.enabled_apps() {
                         if let Err(e) = Self::sync_to_app_dir(&skill.directory, &app) {
-                            log::warn!("enable_skills_by_ids: 同步 skill {} to {:?} 失败: {e}", skill.name, app);
+                            log::warn!(
+                                "enable_skills_by_ids: 同步 skill {} to {:?} 失败: {e}",
+                                skill.name,
+                                app
+                            );
                             skill_failed = true;
                         }
                     }
@@ -2848,7 +2860,11 @@ impl SkillService {
                     let mut skill_failed = false;
                     for app in apps {
                         if let Err(e) = Self::sync_to_app_dir(&skill.directory, app) {
-                            log::warn!("enable_skills_by_ids_for_apps: 同步 skill {} to {:?} 失败: {e}", skill.name, app);
+                            log::warn!(
+                                "enable_skills_by_ids_for_apps: 同步 skill {} to {:?} 失败: {e}",
+                                skill.name,
+                                app
+                            );
                             skill_failed = true;
                         }
                     }

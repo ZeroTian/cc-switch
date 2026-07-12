@@ -26,10 +26,10 @@ mod session_manager;
 mod settings;
 pub mod skill;
 pub mod skill_group;
-pub mod workspace_skill;
 mod stream_check;
 mod subscription;
 mod sync_support;
+pub mod workspace_skill;
 
 mod lightweight;
 mod s3_sync;
@@ -63,9 +63,9 @@ pub use session_manager::*;
 pub use settings::*;
 pub use skill::*;
 pub use skill_group::*;
-pub use workspace_skill::*;
 pub use stream_check::*;
 pub use subscription::*;
+pub use workspace_skill::*;
 
 pub use lightweight::*;
 pub use s3_sync::*;

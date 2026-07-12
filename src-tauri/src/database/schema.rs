@@ -595,6 +595,13 @@ impl Database {
                         Self::migrate_v19_to_v20(conn)?;
                         Self::set_user_version(conn, 20)?;
                     }
+                    20 => {
+                        log::info!(
+                            "迁移数据库从 v20 到 v21（恢复技能分组多激活与工作空间激活关系）"
+                        );
+                        Self::migrate_v20_to_v21(conn)?;
+                        Self::set_user_version(conn, 21)?;
+                    }
                     _ => {
                         return Err(AppError::Database(format!(
                             "未知的数据库版本 {version}，无法迁移到 {SCHEMA_VERSION}"
@@ -1524,41 +1531,13 @@ impl Database {
         )
         .ok();
 
-        // 6. 重建 skill_groups 表（移除 app 开关列和 is_active 列）
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS skill_groups_new (
-                id          TEXT PRIMARY KEY,
-                name        TEXT NOT NULL,
-                description TEXT,
-                icon        TEXT,
-                sort_index  INTEGER,
-                created_at  INTEGER NOT NULL,
-                updated_at  INTEGER NOT NULL
-            );",
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        conn.execute_batch(
-            "INSERT OR IGNORE INTO skill_groups_new (id, name, description, icon, sort_index, created_at, updated_at)
-                SELECT id, name, description, icon, sort_index, created_at, updated_at FROM skill_groups;",
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        conn.execute_batch("DROP TABLE skill_groups;")
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        conn.execute_batch("ALTER TABLE skill_groups_new RENAME TO skill_groups;")
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        // 7. 删除废弃旧表（忽略不存在错误）
-        conn.execute_batch("DROP TABLE IF EXISTS workspace_groups;")
-            .ok();
-        conn.execute_batch("DROP TABLE IF EXISTS workspace_group_active;")
-            .ok();
+        // zerotian 的多激活模型仍依赖 skill_groups 上的激活/app 列、成员表，
+        // 以及两张 workspace 关联表。这里必须保留原表，避免外键级联删除成员，
+        // 同时让 origin 的 bindings 表与多激活模型并存。
         conn.execute_batch("DROP TABLE IF EXISTS skill_group_snapshot;")
             .ok();
 
-        log::info!("v18 -> v19 迁移完成：工作空间绑定表重构，移除旧分组关联表");
+        log::info!("v18 -> v19 迁移完成：已新增 origin 工作空间绑定表并保留多激活数据");
         Ok(())
     }
 
@@ -1566,6 +1545,41 @@ impl Database {
         conn.execute_batch("ALTER TABLE workspaces ADD COLUMN sort_index INTEGER;")
             .ok(); // 若列已存在则忽略
         Ok(())
+    }
+
+    fn migrate_v20_to_v21(conn: &Connection) -> Result<(), AppError> {
+        for (column, definition) in [
+            ("is_active", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("enabled_claude", "BOOLEAN NOT NULL DEFAULT 1"),
+            ("enabled_codex", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("enabled_gemini", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("enabled_opencode", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("enabled_hermes", "BOOLEAN NOT NULL DEFAULT 0"),
+        ] {
+            Self::add_column_if_missing(conn, "skill_groups", column, definition)?;
+        }
+
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS workspace_groups (
+                workspace_id TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, group_id),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS workspace_group_active (
+                workspace_id TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, group_id),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE
+            );
+            INSERT OR IGNORE INTO workspace_groups (workspace_id, group_id)
+                SELECT workspace_id, group_id FROM workspace_group_bindings;
+            INSERT OR IGNORE INTO workspace_group_active (workspace_id, group_id)
+                SELECT workspace_id, group_id FROM workspace_group_bindings;",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))
     }
 
     /// v10 -> v11：usage_daily_rollups 增加 request_model 维度（进入主键），
