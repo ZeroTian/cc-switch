@@ -184,6 +184,46 @@ fn schema_migration_rejects_future_version() {
 }
 
 #[test]
+fn schema_migration_v20_skips_orphaned_workspace_group_bindings() {
+    let conn = Connection::open_in_memory().expect("open memory db");
+    Database::create_tables_on_conn(&conn).expect("create current tables");
+    conn.execute_batch(
+        r#"
+        CREATE TABLE workspace_group_bindings (
+            workspace_id TEXT NOT NULL,
+            group_id TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, group_id)
+        );
+        INSERT INTO workspaces (id, name, path) VALUES ('valid-workspace', 'Valid', '/valid');
+        INSERT INTO skill_groups (id, name) VALUES ('valid-group', 'Valid');
+        INSERT INTO workspace_group_bindings VALUES ('valid-workspace', 'valid-group');
+        INSERT INTO workspace_group_bindings VALUES ('deleted-workspace', 'valid-group');
+        PRAGMA user_version = 20;
+        PRAGMA foreign_keys = ON;
+        "#,
+    )
+    .expect("seed v20 workspace bindings");
+
+    Database::apply_schema_migrations_on_conn(&conn).expect("migrate orphaned bindings");
+
+    let active: Vec<(String, String)> = conn
+        .prepare("SELECT workspace_id, group_id FROM workspace_group_active ORDER BY workspace_id")
+        .expect("prepare active groups query")
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .expect("query active groups")
+        .collect::<rusqlite::Result<_>>()
+        .expect("collect active groups");
+    assert_eq!(
+        active,
+        vec![("valid-workspace".into(), "valid-group".into())]
+    );
+    assert_eq!(
+        Database::get_user_version(&conn).expect("version after migration"),
+        SCHEMA_VERSION
+    );
+}
+
+#[test]
 fn schema_migration_adds_missing_columns_for_providers() {
     let conn = Connection::open_in_memory().expect("open memory db");
 

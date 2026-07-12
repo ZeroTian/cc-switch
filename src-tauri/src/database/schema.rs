@@ -1598,9 +1598,15 @@ impl Database {
                 FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE
             );
             INSERT OR IGNORE INTO workspace_groups (workspace_id, group_id)
-                SELECT workspace_id, group_id FROM workspace_group_bindings;
+                SELECT bindings.workspace_id, bindings.group_id
+                FROM workspace_group_bindings AS bindings
+                INNER JOIN workspaces ON workspaces.id = bindings.workspace_id
+                INNER JOIN skill_groups ON skill_groups.id = bindings.group_id;
             INSERT OR IGNORE INTO workspace_group_active (workspace_id, group_id)
-                SELECT workspace_id, group_id FROM workspace_group_bindings;",
+                SELECT bindings.workspace_id, bindings.group_id
+                FROM workspace_group_bindings AS bindings
+                INNER JOIN workspaces ON workspaces.id = bindings.workspace_id
+                INNER JOIN skill_groups ON skill_groups.id = bindings.group_id;",
         )
         .map_err(|e| AppError::Database(e.to_string()))
     }
