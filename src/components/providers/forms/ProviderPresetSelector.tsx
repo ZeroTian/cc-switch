@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { FormLabel } from "@/components/ui/form";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ClaudeIcon, CodexIcon, GeminiIcon } from "@/components/BrandIcons";
@@ -20,6 +20,8 @@ import type { ClaudeDesktopProviderPreset } from "@/config/claudeDesktopProvider
 import type { OpenCodeProviderPreset } from "@/config/opencodeProviderPresets";
 import type { OpenClawProviderPreset } from "@/config/openclawProviderPresets";
 import type { HermesProviderPreset } from "@/config/hermesProviderPresets";
+import type { McodeProviderPreset } from "@/config/mcodeProviderPresets";
+import type { PiProviderPreset } from "@/config/piProviderPresets";
 import type { ProviderCategory } from "@/types";
 import {
   universalProviderPresets,
@@ -44,7 +46,9 @@ export type AnyPreset =
   | ClaudeDesktopProviderPreset
   | OpenCodeProviderPreset
   | OpenClawProviderPreset
-  | HermesProviderPreset;
+  | HermesProviderPreset
+  | PiProviderPreset
+  | McodeProviderPreset;
 
 export type PresetEntry = {
   id: string;
@@ -87,10 +91,16 @@ export function sortPresetEntries(
   sortMode: PresetSortMode,
   t: PresetTranslator,
 ): PresetEntry[] {
+  const byDisplayName = (a: PresetEntry, b: PresetEntry) =>
+    getPresetDisplayName(a.preset, t).localeCompare(
+      getPresetDisplayName(b.preset, t),
+    );
+
   if (sortMode === PresetSortMode.Original) {
-    // 置顶优先级：官方分类 > 尊享合作伙伴（Kimi）> 其余原顺序。
-    // 用分区拼接而非排序，确保每组内部各自的相对顺序都不变；
-    // 排他条件保证「既是官方又是 prime」的预设只归入官方组、不被重复。
+    // 置顶优先级：官方分类 > 尊享合作伙伴（Kimi）> 其余赞助商 > 非赞助商。
+    // 前三组用分区拼接而非排序，保持各自在预设文件里的相对顺序
+    // （赞助商的文件顺序与 README 赞助商表对齐）；非赞助商按显示名排序。
+    // 排他条件保证同时命中多组的预设只归入最前面的组、不被重复。
     const official = entries.filter(
       (entry) => entry.preset.category === "official",
     );
@@ -98,18 +108,24 @@ export function sortPresetEntries(
       (entry) =>
         entry.preset.category !== "official" && entry.preset.primePartner,
     );
-    const rest = entries.filter(
+    const partner = entries.filter(
       (entry) =>
-        entry.preset.category !== "official" && !entry.preset.primePartner,
+        entry.preset.category !== "official" &&
+        !entry.preset.primePartner &&
+        entry.preset.isPartner,
     );
-    return [...official, ...prime, ...rest];
+    const rest = entries
+      .filter(
+        (entry) =>
+          entry.preset.category !== "official" &&
+          !entry.preset.primePartner &&
+          !entry.preset.isPartner,
+      )
+      .sort(byDisplayName);
+    return [...official, ...prime, ...partner, ...rest];
   }
 
-  return [...entries].sort((a, b) =>
-    getPresetDisplayName(a.preset, t).localeCompare(
-      getPresetDisplayName(b.preset, t),
-    ),
-  );
+  return [...entries].sort(byDisplayName);
 }
 
 export interface PresetVisibilityOptions {
@@ -135,6 +151,7 @@ interface ProviderPresetSelectorProps {
   onUniversalPresetSelect?: (preset: UniversalProviderPreset) => void;
   onManageUniversalProviders?: () => void;
   category?: ProviderCategory; // 当前选中的分类
+  categoryHint?: ReactNode;
 }
 
 export function ProviderPresetSelector({
@@ -145,6 +162,7 @@ export function ProviderPresetSelector({
   onUniversalPresetSelect,
   onManageUniversalProviders,
   category,
+  categoryHint,
 }: Readonly<ProviderPresetSelectorProps>) {
   const { t } = useTranslation();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -203,6 +221,7 @@ export function ProviderPresetSelector({
   );
 
   const getCategoryHint = (): ReactNode => {
+    if (categoryHint !== undefined) return categoryHint;
     switch (category) {
       case "official":
         return t("providerForm.officialHint", {
@@ -302,7 +321,7 @@ export function ProviderPresetSelector({
   return (
     <div ref={searchContainerRef} className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <FormLabel>{t("providerPreset.label")}</FormLabel>
+        <Label>{t("providerPreset.label")}</Label>
         <div className="flex items-center gap-2">
           {searchOpen && (
             <Input
