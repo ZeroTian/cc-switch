@@ -42,8 +42,12 @@ function WorkspaceBindingsList({ workspace }: { workspace: Workspace }) {
   const { data: bindings } = useWorkspaceBindings(workspace.id);
   const toggleGroupMutation = useToggleGroupInWorkspace();
   const toggleSkillMutation = useToggleWorkspaceSkill();
-  const [pendingGroupId, setPendingGroupId] = useState<string | null>(null);
-  const [pendingSkillId, setPendingSkillId] = useState<string | null>(null);
+  const [pendingGroupIds, setPendingGroupIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [pendingSkillIds, setPendingSkillIds] = useState<Set<string>>(
+    new Set(),
+  );
   const orderedGroups = [...groups].sort(
     (a, b) =>
       Number(activeGroupIds.includes(b.id)) -
@@ -56,7 +60,7 @@ function WorkspaceBindingsList({ workspace }: { workspace: Workspace }) {
   );
 
   const handleToggleGroup = async (groupId: string, checked: boolean) => {
-    setPendingGroupId(groupId);
+    setPendingGroupIds((previous) => new Set(previous).add(groupId));
     try {
       await toggleGroupMutation.mutateAsync({
         workspaceId: workspace.id,
@@ -68,12 +72,16 @@ function WorkspaceBindingsList({ workspace }: { workspace: Workspace }) {
         description: String(error),
       });
     } finally {
-      setPendingGroupId(null);
+      setPendingGroupIds((previous) => {
+        const next = new Set(previous);
+        next.delete(groupId);
+        return next;
+      });
     }
   };
 
   const handleToggleSkill = async (skillId: string, checked: boolean) => {
-    setPendingSkillId(skillId);
+    setPendingSkillIds((previous) => new Set(previous).add(skillId));
     try {
       await toggleSkillMutation.mutateAsync({
         workspaceId: workspace.id,
@@ -85,7 +93,11 @@ function WorkspaceBindingsList({ workspace }: { workspace: Workspace }) {
         description: String(error),
       });
     } finally {
-      setPendingSkillId(null);
+      setPendingSkillIds((previous) => {
+        const next = new Set(previous);
+        next.delete(skillId);
+        return next;
+      });
     }
   };
 
@@ -126,7 +138,7 @@ function WorkspaceBindingsList({ workspace }: { workspace: Workspace }) {
                   <Checkbox
                     checked={checked}
                     onCheckedChange={(v) => handleToggleGroup(group.id, !!v)}
-                    disabled={pendingGroupId === group.id}
+                    disabled={pendingGroupIds.has(group.id)}
                     className="shrink-0"
                   />
                   <span className="min-w-0 truncate text-body text-fg-1">
@@ -168,7 +180,7 @@ function WorkspaceBindingsList({ workspace }: { workspace: Workspace }) {
                   <Checkbox
                     checked={checked}
                     onCheckedChange={(v) => handleToggleSkill(skill.id, !!v)}
-                    disabled={pendingSkillId === skill.id}
+                    disabled={pendingSkillIds.has(skill.id)}
                     className="shrink-0"
                   />
                   <div className="min-w-0 flex-1">

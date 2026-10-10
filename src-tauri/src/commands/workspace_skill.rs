@@ -118,14 +118,19 @@ pub fn get_workspace_group_ids(
 }
 
 #[tauri::command]
-pub fn toggle_group_in_workspace(
+pub async fn toggle_group_in_workspace(
     workspace_id: String,
     group_id: String,
     active: bool,
     app_state: State<'_, AppState>,
 ) -> Result<(), String> {
-    WorkspaceSkillService::toggle_group(&app_state.db, &workspace_id, &group_id, active)
-        .map_err(|e| e.to_string())
+    let db = app_state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        WorkspaceSkillService::toggle_group(&db, &workspace_id, &group_id, active)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("切换工作空间分组失败: {e}"))?
 }
 
 #[tauri::command]
@@ -148,14 +153,19 @@ pub fn get_workspace_bindings(
 }
 
 #[tauri::command]
-pub fn toggle_workspace_skill(
+pub async fn toggle_workspace_skill(
     workspace_id: String,
     skill_id: String,
     active: bool,
     app_state: State<'_, AppState>,
 ) -> Result<(), String> {
-    WorkspaceSkillService::toggle_skill(&app_state.db, &workspace_id, &skill_id, active)
-        .map_err(|e| e.to_string())
+    let db = app_state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        WorkspaceSkillService::toggle_skill(&db, &workspace_id, &skill_id, active)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("切换工作空间 Skill 失败: {e}"))?
 }
 
 #[cfg(test)]

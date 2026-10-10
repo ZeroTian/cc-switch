@@ -1,5 +1,51 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { workspacesApi } from "@/lib/api/workspaces";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
+import { workspacesApi, type WorkspaceBindings } from "@/lib/api/workspaces";
+import type { SkillGroup } from "@/lib/api/skills";
+import {
+  skillBindingMutationOptions,
+  updateSelectedId,
+} from "./skillBindingMutations";
+
+function updateBindings(
+  client: QueryClient,
+  workspaceId: string,
+  field: "groupIds" | "skillIds",
+  id: string,
+  selected: boolean,
+) {
+  client.setQueryData<WorkspaceBindings>(
+    ["workspaces", "bindings", workspaceId],
+    (previous) => {
+      if (!previous) return previous;
+      const bindings = {
+        ...previous,
+        [field]: updateSelectedId(previous[field], id, selected),
+      };
+      const groups = client.getQueryData<SkillGroup[]>(["skillGroups"]);
+      if (
+        !groups ||
+        bindings.groupIds.some(
+          (groupId) => !groups.some((group) => group.id === groupId),
+        )
+      ) {
+        return bindings;
+      }
+      const allSkillIds = new Set(bindings.skillIds);
+      for (const groupId of bindings.groupIds) {
+        const memberIds =
+          client.getQueryData<string[]>(["skillGroups", "members", groupId]) ??
+          groups.find((group) => group.id === groupId)!.memberIds;
+        memberIds.forEach((skillId) => allSkillIds.add(skillId));
+      }
+      return { ...bindings, totalSkillCount: allSkillIds.size };
+    },
+  );
+}
 
 export function useWorkspaces() {
   return useQuery({
@@ -64,6 +110,7 @@ export function useRemoveGroupFromWorkspace() {
 export function useToggleGroupInWorkspace() {
   const qc = useQueryClient();
   return useMutation({
+    ...skillBindingMutationOptions(qc),
     mutationFn: ({
       workspaceId,
       groupId,
@@ -73,10 +120,27 @@ export function useToggleGroupInWorkspace() {
       groupId: string;
       active: boolean;
     }) => workspacesApi.toggleGroupActive(workspaceId, groupId, active),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["skillGroups"] });
-      qc.invalidateQueries({ queryKey: ["workspaces", "activeGroups"] });
-      qc.invalidateQueries({ queryKey: ["workspaces", "bindings"] });
+    onMutate: async ({ workspaceId, groupId, active }) => {
+      const key = ["workspaces", "activeGroups", workspaceId];
+      await Promise.all([
+        qc.cancelQueries({ queryKey: key }),
+        qc.cancelQueries({ queryKey: ["workspaces", "bindings", workspaceId] }),
+      ]);
+      const wasSelected =
+        qc.getQueryData<string[]>(key)?.includes(groupId) ?? false;
+      qc.setQueryData<string[]>(key, (ids = []) =>
+        updateSelectedId(ids, groupId, active),
+      );
+      updateBindings(qc, workspaceId, "groupIds", groupId, active);
+      return { wasSelected };
+    },
+    onError: (_error, { workspaceId, groupId }, context) => {
+      if (!context) return;
+      qc.setQueryData<string[]>(
+        ["workspaces", "activeGroups", workspaceId],
+        (ids = []) => updateSelectedId(ids, groupId, context.wasSelected),
+      );
+      updateBindings(qc, workspaceId, "groupIds", groupId, context.wasSelected);
     },
   });
 }
@@ -102,6 +166,7 @@ export function useWorkspaceBindings(workspaceId: string | null) {
 export function useToggleWorkspaceSkill() {
   const qc = useQueryClient();
   return useMutation({
+    ...skillBindingMutationOptions(qc),
     mutationFn: ({
       workspaceId,
       skillId,
@@ -111,10 +176,18 @@ export function useToggleWorkspaceSkill() {
       skillId: string;
       active: boolean;
     }) => workspacesApi.toggleSkill(workspaceId, skillId, active),
-    onSuccess: (_data, { workspaceId }) => {
-      qc.invalidateQueries({
-        queryKey: ["workspaces", "bindings", workspaceId],
-      });
+    onMutate: async ({ workspaceId, skillId, active }) => {
+      const key = ["workspaces", "bindings", workspaceId];
+      await qc.cancelQueries({ queryKey: key });
+      const wasSelected =
+        qc.getQueryData<WorkspaceBindings>(key)?.skillIds.includes(skillId) ??
+        false;
+      updateBindings(qc, workspaceId, "skillIds", skillId, active);
+      return { wasSelected };
+    },
+    onError: (_error, { workspaceId, skillId }, context) => {
+      if (!context) return;
+      updateBindings(qc, workspaceId, "skillIds", skillId, context.wasSelected);
     },
   });
 }

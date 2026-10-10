@@ -60,45 +60,51 @@ pub fn set_group_active(
 }
 
 #[tauri::command]
-pub fn add_skill_to_group(
+pub async fn add_skill_to_group(
     group_id: String,
     skill_id: String,
     app_state: State<'_, AppState>,
 ) -> Result<(), String> {
-    app_state
-        .db
-        .add_skill_to_group(&group_id, &skill_id)
-        .map_err(|e| e.to_string())?;
-    // 重新同步全局（sync 内部自行计算所有激活分组）
-    if let Err(e) = SkillGroupService::sync_active_groups_to_global(&app_state.db) {
-        log::warn!("skill_to_group: 全局同步失败: {e}");
-    }
-    // 同步到绑定该分组的工作空间
-    if let Err(e) = WorkspaceSkillService::sync_workspaces_for_group(&app_state.db, &group_id) {
-        log::warn!("skill_to_group: 工作空间同步失败: {e}");
-    }
-    Ok(())
+    let db = app_state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.add_skill_to_group(&group_id, &skill_id)
+            .map_err(|e| e.to_string())?;
+        // 重新同步全局（sync 内部自行计算所有激活分组）
+        if let Err(e) = SkillGroupService::sync_active_groups_to_global(&db) {
+            log::warn!("skill_to_group: 全局同步失败: {e}");
+        }
+        // 同步到绑定该分组的工作空间
+        if let Err(e) = WorkspaceSkillService::sync_workspaces_for_group(&db, &group_id) {
+            log::warn!("skill_to_group: 工作空间同步失败: {e}");
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("添加 Skill 到分组失败: {e}"))?
 }
 
 #[tauri::command]
-pub fn remove_skill_from_group(
+pub async fn remove_skill_from_group(
     group_id: String,
     skill_id: String,
     app_state: State<'_, AppState>,
 ) -> Result<(), String> {
-    app_state
-        .db
-        .remove_skill_from_group(&group_id, &skill_id)
-        .map_err(|e| e.to_string())?;
-    // 重新同步全局（sync 内部自行计算所有激活分组）
-    if let Err(e) = SkillGroupService::sync_active_groups_to_global(&app_state.db) {
-        log::warn!("skill_to_group: 全局同步失败: {e}");
-    }
-    // 同步到绑定该分组的工作空间
-    if let Err(e) = WorkspaceSkillService::sync_workspaces_for_group(&app_state.db, &group_id) {
-        log::warn!("skill_to_group: 工作空间同步失败: {e}");
-    }
-    Ok(())
+    let db = app_state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.remove_skill_from_group(&group_id, &skill_id)
+            .map_err(|e| e.to_string())?;
+        // 重新同步全局（sync 内部自行计算所有激活分组）
+        if let Err(e) = SkillGroupService::sync_active_groups_to_global(&db) {
+            log::warn!("skill_to_group: 全局同步失败: {e}");
+        }
+        // 同步到绑定该分组的工作空间
+        if let Err(e) = WorkspaceSkillService::sync_workspaces_for_group(&db, &group_id) {
+            log::warn!("skill_to_group: 工作空间同步失败: {e}");
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("从分组移除 Skill 失败: {e}"))?
 }
 
 #[tauri::command]

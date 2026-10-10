@@ -357,6 +357,20 @@ impl WorkspaceSkillService {
                                 || previous_ssot
                                     .is_some_and(|previous| Self::is_still_managed(&dest, previous))
                             {
+                                // 正确的受管链接直接保留；Copy、旧来源或错误目标仍需重部署。
+                                if crate::settings::get_skill_sync_method() != SyncMethod::Copy
+                                    && std::fs::read_link(&dest).is_ok_and(|target| {
+                                        let target = if target.is_absolute() {
+                                            target
+                                        } else {
+                                            target_skills_dir.join(target)
+                                        };
+                                        SkillService::paths_alias(&target, &source)
+                                    })
+                                {
+                                    new_managed.insert(skill.directory.clone());
+                                    continue;
+                                }
                                 if let Err(error) = SkillService::remove_path(&dest) {
                                     log::warn!(
                                         "sync_workspace: 移除旧 Skill {} 失败: {error:#}",
@@ -911,6 +925,240 @@ impl WorkspaceSkillService {
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
+
+    #[cfg(unix)]
+    mod directory_sync {
+        use super::*;
+        use std::os::unix::fs::MetadataExt;
+        use tempfile::{tempdir, TempDir};
+
+        struct Fixture {
+            db: Arc<Database>,
+            source: PathBuf,
+            target: PathBuf,
+            previous_settings: crate::settings::AppSettings,
+            previous_home: Option<std::ffi::OsString>,
+            temp: TempDir,
+        }
+
+        impl Fixture {
+            fn new(method: SyncMethod) -> Self {
+                let temp = tempdir().expect("create isolated skill directories");
+                let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+                std::env::set_var("CC_SWITCH_TEST_HOME", temp.path());
+                let previous_settings = crate::settings::get_settings();
+                let mut settings = previous_settings.clone();
+                settings.skill_sync_method = method;
+                crate::settings::update_settings(settings).expect("set isolated sync method");
+                let db = Arc::new(Database::memory().expect("create memory db"));
+                db.conn
+                    .lock()
+                    .expect("lock conn")
+                    .execute_batch(
+                        "INSERT INTO skills (id, name, directory, enabled_codex) VALUES
+                        ('kept', 'Kept', 'kept', 1),
+                        ('added', 'Added', 'added', 1),
+                        ('removed', 'Removed', 'removed', 1);",
+                    )
+                    .expect("seed selected skills");
+                let source = temp.path().join("ssot");
+                let target = temp.path().join("project/.agents/skills");
+                for name in ["kept", "added", "removed"] {
+                    std::fs::create_dir_all(source.join(name)).expect("create source skill");
+                    std::fs::write(source.join(name).join("SKILL.md"), name)
+                        .expect("write source skill");
+                }
+                Self {
+                    db,
+                    source,
+                    target,
+                    previous_settings,
+                    previous_home,
+                    temp,
+                }
+            }
+
+            fn sync(
+                &self,
+                selected: &[&str],
+                previous_ssot: Option<&Path>,
+            ) -> Vec<SkillSyncFailure> {
+                WorkspaceSkillService::sync_skills_to_directory(
+                    &self.db,
+                    &selected.iter().map(|id| (*id).to_string()).collect(),
+                    &AppType::Codex,
+                    &self.target,
+                    &self.source,
+                    previous_ssot,
+                    false,
+                )
+                .expect("sync isolated skill directory")
+            }
+
+            fn retain_link_inode(&self, name: &str) -> u64 {
+                let link = self.target.join(name);
+                // Keep the original inode allocated even if sync removes its directory entry.
+                std::fs::hard_link(&link, self.temp.path().join(format!("retained-{name}")))
+                    .expect("retain original symlink inode");
+                std::fs::symlink_metadata(link)
+                    .expect("read symlink metadata")
+                    .ino()
+            }
+        }
+
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                crate::settings::update_settings(self.previous_settings.clone())
+                    .expect("restore isolated settings");
+                match self.previous_home.take() {
+                    Some(home) => std::env::set_var("CC_SWITCH_TEST_HOME", home),
+                    None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+                }
+            }
+        }
+
+        #[test]
+        #[serial_test::serial]
+        fn repeated_sync_preserves_correct_managed_symlink() {
+            for method in [SyncMethod::Symlink, SyncMethod::Auto] {
+                let fixture = Fixture::new(method);
+                assert!(fixture.sync(&["kept"], None).is_empty());
+                let inode = fixture.retain_link_inode("kept");
+
+                assert!(fixture.sync(&["kept"], None).is_empty());
+
+                let link = fixture.target.join("kept");
+                assert_eq!(
+                    std::fs::read_link(&link).unwrap(),
+                    fixture.source.join("kept")
+                );
+                assert_eq!(
+                    std::fs::symlink_metadata(link).unwrap().ino(),
+                    inode,
+                    "unchanged managed symlink must not be removed and recreated"
+                );
+            }
+        }
+
+        #[test]
+        #[serial_test::serial]
+        fn changed_selection_preserves_kept_link_and_deploys_and_removes_skills() {
+            let fixture = Fixture::new(SyncMethod::Symlink);
+            assert!(fixture.sync(&["kept", "removed"], None).is_empty());
+            let inode = fixture.retain_link_inode("kept");
+
+            assert!(fixture.sync(&["kept", "added"], None).is_empty());
+
+            assert_eq!(
+                std::fs::symlink_metadata(fixture.target.join("kept"))
+                    .unwrap()
+                    .ino(),
+                inode
+            );
+            assert_eq!(
+                std::fs::read_link(fixture.target.join("added")).unwrap(),
+                fixture.source.join("added")
+            );
+            assert!(!fixture.target.join("removed").is_symlink());
+            assert_eq!(
+                WorkspaceSkillService::read_skills_manifest(&fixture.target).unwrap(),
+                HashSet::from(["kept".to_string(), "added".to_string()])
+            );
+        }
+
+        #[test]
+        #[serial_test::serial]
+        fn sync_repairs_wrong_and_dangling_managed_link_targets() {
+            let fixture = Fixture::new(SyncMethod::Symlink);
+            assert!(fixture.sync(&["kept"], None).is_empty());
+            for wrong_target in [fixture.source.join("added"), fixture.source.join("missing")] {
+                let link = fixture.target.join("kept");
+                std::fs::remove_file(&link).unwrap();
+                std::os::unix::fs::symlink(wrong_target, &link).unwrap();
+
+                assert!(fixture.sync(&["kept"], None).is_empty());
+
+                assert_eq!(
+                    std::fs::read_link(link).unwrap(),
+                    fixture.source.join("kept")
+                );
+            }
+        }
+
+        #[test]
+        #[serial_test::serial]
+        fn sync_preserves_equivalent_relative_managed_link() {
+            let fixture = Fixture::new(SyncMethod::Symlink);
+            assert!(fixture.sync(&["kept"], None).is_empty());
+            let link = fixture.target.join("kept");
+            std::fs::remove_file(&link).unwrap();
+            let relative_source = Path::new("../../../ssot/kept");
+            std::os::unix::fs::symlink(relative_source, &link).unwrap();
+            let inode = fixture.retain_link_inode("kept");
+
+            assert!(fixture.sync(&["kept"], None).is_empty());
+
+            assert_eq!(std::fs::read_link(&link).unwrap(), relative_source);
+            assert_eq!(std::fs::symlink_metadata(link).unwrap().ino(), inode);
+        }
+
+        #[test]
+        #[serial_test::serial]
+        fn sync_retargets_previous_storage_link() {
+            let fixture = Fixture::new(SyncMethod::Symlink);
+            let previous = fixture.temp.path().join("previous-ssot");
+            std::fs::create_dir_all(&fixture.target).unwrap();
+            let link = fixture.target.join("kept");
+            std::os::unix::fs::symlink(previous.join("kept"), &link).unwrap();
+
+            assert!(fixture.sync(&["kept"], Some(&previous)).is_empty());
+
+            assert_eq!(
+                std::fs::read_link(link).unwrap(),
+                fixture.source.join("kept")
+            );
+        }
+
+        #[test]
+        #[serial_test::serial]
+        fn copy_mode_replaces_symlink_and_refreshes_managed_copy() {
+            let fixture = Fixture::new(SyncMethod::Copy);
+            std::fs::create_dir_all(&fixture.target).unwrap();
+            let dest = fixture.target.join("kept");
+            std::os::unix::fs::symlink(fixture.source.join("kept"), &dest).unwrap();
+
+            assert!(fixture.sync(&["kept"], None).is_empty());
+            assert!(!dest.is_symlink());
+            assert!(dest.join(MANAGED_MARKER).is_file());
+            std::fs::write(fixture.source.join("kept/SKILL.md"), "updated").unwrap();
+            assert!(fixture.sync(&["kept"], None).is_empty());
+            assert_eq!(
+                std::fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+                "updated"
+            );
+        }
+
+        #[test]
+        #[serial_test::serial]
+        fn sync_preserves_user_replaced_link_and_reports_conflict() {
+            let fixture = Fixture::new(SyncMethod::Symlink);
+            assert!(fixture.sync(&["kept"], None).is_empty());
+            let link = fixture.target.join("kept");
+            std::fs::remove_file(&link).unwrap();
+            let foreign_source = fixture.temp.path().join("user-owned");
+            std::fs::create_dir_all(&foreign_source).unwrap();
+            std::os::unix::fs::symlink(&foreign_source, &link).unwrap();
+
+            let failures = fixture.sync(&["kept"], None);
+
+            assert_eq!(failures.len(), 1);
+            assert_eq!(failures[0].directory, "kept");
+            assert_eq!(std::fs::read_link(link).unwrap(), foreign_source);
+            assert!(WorkspaceSkillService::read_skills_manifest(&fixture.target)
+                .unwrap()
+                .is_empty());
+        }
+    }
 
     #[test]
     fn get_bindings_returns_active_groups_direct_skills_and_deduplicated_total() {

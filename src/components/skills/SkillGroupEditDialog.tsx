@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { SearchField } from "@/components/ui/search-field";
 import { AppGlyph, APP_DISPLAY_NAME } from "@/components/shell/AppGlyph";
 import { SKILLS_APP_IDS } from "@/config/appConfig";
@@ -44,6 +45,7 @@ export function SkillGroupEditDialog({
   const [description, setDescription] = useState("");
   const [apps, setApps] = useState<SkillGroupApps>(DEFAULT_GROUP_APPS);
   const [search, setSearch] = useState("");
+  const [pendingMembers, setPendingMembers] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (open) {
@@ -71,12 +73,23 @@ export function SkillGroupEditDialog({
         Number(selectedSkillIds.has(b.id)) - Number(selectedSkillIds.has(a.id)),
     );
 
-  const toggleMember = (skillId: string, checked: boolean) => {
+  const toggleMember = async (skillId: string, checked: boolean) => {
     if (!group) return;
-    if (checked) {
-      addMutation.mutate({ groupId: group.id, skillId });
-    } else {
-      removeMutation.mutate({ groupId: group.id, skillId });
+    const key = `${group.id}/${skillId}`;
+    setPendingMembers((previous) => new Set(previous).add(key));
+    try {
+      const mutation = checked ? addMutation : removeMutation;
+      await mutation.mutateAsync({ groupId: group.id, skillId });
+    } catch (error) {
+      toast.error(t("common.error", "操作失败"), {
+        description: String(error),
+      });
+    } finally {
+      setPendingMembers((previous) => {
+        const next = new Set(previous);
+        next.delete(key);
+        return next;
+      });
     }
   };
 
@@ -164,9 +177,7 @@ export function SkillGroupEditDialog({
                       <Checkbox
                         checked={checked}
                         onCheckedChange={(v) => toggleMember(skill.id, !!v)}
-                        disabled={
-                          addMutation.isPending || removeMutation.isPending
-                        }
+                        disabled={pendingMembers.has(`${group.id}/${skill.id}`)}
                         className="mt-0.5"
                       />
                       <div className="flex-1 min-w-0">
@@ -196,7 +207,7 @@ export function SkillGroupEditDialog({
           variant="solid"
           size="regular"
           onClick={handleSave}
-          disabled={!name.trim() || saving}
+          disabled={!name.trim() || saving || pendingMembers.size > 0}
         >
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           {t("common.save", "保存")}
