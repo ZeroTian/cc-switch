@@ -435,17 +435,22 @@ describe("UnifiedSkillsPanel", () => {
     expect(m.updateSkill).toHaveBeenCalledWith("b");
   });
 
-  it("switches Installed / Discover with page tabs", async () => {
+  it("orders Installed / Groups / Workspaces / Discover and switches to Discover", async () => {
     m.installed = [makeSkill()];
     renderPanel();
     const tabs = screen.getByRole("tablist", { name: "skillsPage.viewAria" });
-    const [installed, discover] = within(tabs).getAllByRole("tab");
+    const [installed, groups, workspaces, discover] =
+      within(tabs).getAllByRole("tab");
+    expect(installed).toHaveTextContent("skillsPage.viewInstalledCount");
+    expect(groups).toHaveTextContent("分组");
+    expect(workspaces).toHaveTextContent("工作空间");
+    expect(discover).toHaveTextContent("skillsPage.viewDiscover");
     expect(installed).toHaveAttribute("aria-selected", "true");
     await userEvent.click(discover);
     expect(
       within(
         screen.getByRole("tablist", { name: "skillsPage.viewAria" }),
-      ).getAllByRole("tab")[1],
+      ).getAllByRole("tab")[3],
     ).toHaveAttribute("aria-selected", "true");
   });
 

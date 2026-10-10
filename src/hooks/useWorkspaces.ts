@@ -73,10 +73,10 @@ export function useToggleGroupInWorkspace() {
       groupId: string;
       active: boolean;
     }) => workspacesApi.toggleGroupActive(workspaceId, groupId, active),
-    onSuccess: (_data, { workspaceId }) => {
-      qc.invalidateQueries({
-        queryKey: ["workspaces", "activeGroups", workspaceId],
-      });
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["skillGroups"] });
+      qc.invalidateQueries({ queryKey: ["workspaces", "activeGroups"] });
+      qc.invalidateQueries({ queryKey: ["workspaces", "bindings"] });
     },
   });
 }
@@ -87,5 +87,34 @@ export function useWorkspaceActiveGroupIds(workspaceId: string | null) {
     queryFn: () => workspacesApi.getActiveGroupIds(workspaceId!),
     enabled: !!workspaceId,
     staleTime: Infinity,
+  });
+}
+
+export function useWorkspaceBindings(workspaceId: string | null) {
+  return useQuery({
+    queryKey: ["workspaces", "bindings", workspaceId],
+    queryFn: () => workspacesApi.getBindings(workspaceId!),
+    enabled: !!workspaceId,
+    staleTime: 0,
+  });
+}
+
+export function useToggleWorkspaceSkill() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      workspaceId,
+      skillId,
+      active,
+    }: {
+      workspaceId: string;
+      skillId: string;
+      active: boolean;
+    }) => workspacesApi.toggleSkill(workspaceId, skillId, active),
+    onSuccess: (_data, { workspaceId }) => {
+      qc.invalidateQueries({
+        queryKey: ["workspaces", "bindings", workspaceId],
+      });
+    },
   });
 }

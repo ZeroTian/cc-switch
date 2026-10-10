@@ -1,16 +1,12 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchField } from "@/components/ui/search-field";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, FolderOpen, Search } from "lucide-react";
+import { FIELD_CLASS } from "@/components/mcp/formBits";
+import { Loader2, FolderOpen } from "lucide-react";
 import { settingsApi } from "@/lib/api";
 import { useSkillGroups } from "@/hooks/useSkillGroups";
 import {
@@ -88,55 +84,61 @@ export function WorkspaceEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg" zIndex="top">
-        <DialogHeader>
-          <DialogTitle>
-            {workspace
-              ? t("workspaces.edit", "编辑工作空间")
-              : t("workspaces.create", "新建工作空间")}
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent
+        zIndex="top"
+        aria-describedby={undefined}
+        style={{ maxWidth: 480 }}
+        className="max-h-[calc(100vh-48px)] gap-4 rounded-dialog border-border bg-surface p-6 text-fg-1 shadow-v7-lg sm:rounded-dialog"
+      >
+        <DialogTitle className="text-section [overflow-wrap:anywhere]">
+          {workspace
+            ? t("workspaces.edit", "编辑工作空间")
+            : t("workspaces.create", "新建工作空间")}
+        </DialogTitle>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 min-h-0">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
           <Input
+            aria-label={t("workspaces.namePlaceholder", "工作空间名称")}
             placeholder={t("workspaces.namePlaceholder", "工作空间名称")}
             value={name}
             onChange={(e) => setName(e.target.value)}
+            className={FIELD_CLASS}
           />
           <div className="flex gap-2">
             <Input
+              aria-label={t("workspaces.pathPlaceholder", "项目目录路径")}
               placeholder={t("workspaces.pathPlaceholder", "项目目录路径")}
               value={path}
               onChange={(e) => setPath(e.target.value)}
-              className="flex-1"
+              className={`${FIELD_CLASS} flex-1`}
             />
             <Button
-              variant="outline"
-              size="sm"
+              variant="neutral"
+              size="regular"
+              className="w-8 shrink-0 p-0"
+              aria-label={t("settings.browseDirectory", "浏览目录")}
               onClick={handleBrowse}
               type="button"
             >
-              <FolderOpen className="h-4 w-4" />
+              <FolderOpen aria-hidden="true" className="h-3.5 w-3.5" />
             </Button>
           </div>
 
           {workspace && (
             <div className="space-y-2">
-              <div className="text-sm font-medium">
+              <div className="text-body font-medium text-fg-1">
                 {t("workspaces.bindGroups", "绑定分组")}
               </div>
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder={t("workspaces.searchGroups", "搜索分组")}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-8"
-                />
-              </div>
-              <div className="space-y-1 border rounded-md p-2 max-h-48 overflow-y-auto">
+              <SearchField
+                aria-label={t("workspaces.searchGroups", "搜索分组")}
+                placeholder={t("workspaces.searchGroups", "搜索分组")}
+                value={search}
+                onValueChange={setSearch}
+                clearLabel={t("mcpPage.clearSearch", "清除搜索")}
+              />
+              <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-panel border border-border bg-surface p-1">
                 {filteredGroups.length === 0 ? (
-                  <div className="text-sm text-muted-foreground py-2 text-center">
+                  <div className="py-3 text-center text-body text-fg-2">
                     {t("workspaces.noGroups", "没有可用分组")}
                   </div>
                 ) : (
@@ -145,7 +147,7 @@ export function WorkspaceEditDialog({
                     return (
                       <label
                         key={group.id}
-                        className="flex items-center gap-2 cursor-pointer rounded px-1 py-1 hover:bg-accent"
+                        className="flex min-h-8 cursor-pointer items-center gap-2 rounded-control px-2 py-1.5 transition-colors hover:bg-subtle"
                       >
                         <Checkbox
                           checked={checked}
@@ -153,10 +155,13 @@ export function WorkspaceEditDialog({
                           disabled={
                             addMutation.isPending || removeMutation.isPending
                           }
+                          className="shrink-0"
                         />
-                        <span className="text-sm">{group.name}</span>
+                        <span className="min-w-0 truncate text-body text-fg-1">
+                          {group.name}
+                        </span>
                         {group.description && (
-                          <span className="text-xs text-muted-foreground truncate flex-1">
+                          <span className="min-w-0 flex-1 truncate text-caption text-fg-2">
                             {group.description}
                           </span>
                         )}
@@ -169,18 +174,25 @@ export function WorkspaceEditDialog({
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 pt-1">
+          <Button variant="neutral" size="regular" onClick={onClose}>
             {t("common.cancel", "取消")}
           </Button>
           <Button
+            variant="solid"
+            size="regular"
             onClick={handleSave}
             disabled={!name.trim() || !path.trim() || saving}
           >
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {saving && (
+              <Loader2
+                aria-hidden="true"
+                className="h-3.5 w-3.5 animate-spin"
+              />
+            )}
             {t("common.save", "保存")}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

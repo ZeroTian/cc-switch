@@ -1593,6 +1593,8 @@ pub fn run() {
             commands::get_workspace_group_ids,
             commands::toggle_group_in_workspace,
             commands::get_workspace_active_group_ids,
+            commands::get_workspace_bindings,
+            commands::toggle_workspace_skill,
             // Skill management (legacy API compatibility)
             commands::get_skills,
             commands::get_skills_for_app,

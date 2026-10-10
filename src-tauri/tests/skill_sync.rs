@@ -297,12 +297,12 @@ fn restore_skill_backup_restores_files_to_ssot_and_current_app() {
         "restored skill should exist in SSOT"
     );
     assert!(
-        home.join(".claude")
+        !home
+            .join(".claude")
             .join("skills")
             .join("restore-skill")
-            .join("prompt.md")
             .exists(),
-        "restored skill should sync to the selected app"
+        "restoring an app preference must not bypass the global workspace selection"
     );
     assert!(
         state

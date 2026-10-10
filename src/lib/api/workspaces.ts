@@ -4,9 +4,16 @@ export interface Workspace {
   id: string;
   name: string;
   path: string;
+  isUserLevel: boolean;
   createdAt: number;
   updatedAt: number;
   groupIds: string[];
+}
+
+export interface WorkspaceBindings {
+  groupIds: string[];
+  skillIds: string[];
+  totalSkillCount: number;
 }
 
 export const workspacesApi = {
@@ -46,4 +53,14 @@ export const workspacesApi = {
 
   getActiveGroupIds: (workspaceId: string): Promise<string[]> =>
     invoke("get_workspace_active_group_ids", { workspaceId }),
+
+  getBindings: (workspaceId: string): Promise<WorkspaceBindings> =>
+    invoke("get_workspace_bindings", { workspaceId }),
+
+  toggleSkill: (
+    workspaceId: string,
+    skillId: string,
+    active: boolean,
+  ): Promise<void> =>
+    invoke("toggle_workspace_skill", { workspaceId, skillId, active }),
 };

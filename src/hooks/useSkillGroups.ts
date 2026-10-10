@@ -50,6 +50,8 @@ export function useSetGroupActive() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["skillGroups"] });
       qc.invalidateQueries({ queryKey: ["skills", "installed"] });
+      qc.invalidateQueries({ queryKey: ["workspaces", "activeGroups"] });
+      qc.invalidateQueries({ queryKey: ["workspaces", "bindings"] });
     },
   });
 }
@@ -62,6 +64,7 @@ export function useAddSkillToGroup() {
     onSuccess: (_data, { groupId }) => {
       qc.invalidateQueries({ queryKey: ["skillGroups"] });
       qc.invalidateQueries({ queryKey: ["skillGroups", "members", groupId] });
+      qc.invalidateQueries({ queryKey: ["workspaces", "bindings"] });
     },
   });
 }
@@ -74,6 +77,7 @@ export function useRemoveSkillFromGroup() {
     onSuccess: (_data, { groupId }) => {
       qc.invalidateQueries({ queryKey: ["skillGroups"] });
       qc.invalidateQueries({ queryKey: ["skillGroups", "members", groupId] });
+      qc.invalidateQueries({ queryKey: ["workspaces", "bindings"] });
     },
   });
 }

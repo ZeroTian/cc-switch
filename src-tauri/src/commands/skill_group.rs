@@ -38,9 +38,15 @@ pub fn update_skill_group(
 
 #[tauri::command]
 pub fn delete_skill_group(id: String, app_state: State<'_, AppState>) -> Result<(), String> {
+    let affected_workspaces = app_state
+        .db
+        .get_workspaces_with_active_group(&id)
+        .map_err(|e| e.to_string())?;
     app_state
         .db
         .delete_skill_group(&id)
+        .map_err(|e| e.to_string())?;
+    SkillGroupService::sync_after_delete(&app_state.db, &affected_workspaces)
         .map_err(|e| e.to_string())
 }
 

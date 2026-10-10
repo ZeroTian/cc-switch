@@ -256,6 +256,209 @@ fn schema_migration_v20_skips_orphaned_workspace_group_bindings() {
 }
 
 #[test]
+fn schema_create_tables_restores_user_level_workspace_shape_and_seed() {
+    let conn = Connection::open_in_memory().expect("open memory db");
+
+    Database::create_tables_on_conn(&conn).expect("create current tables");
+
+    let is_user_level = get_column_info(&conn, "workspaces", "is_user_level");
+    assert_eq!(is_user_level.r#type, "INTEGER");
+    assert_eq!(is_user_level.notnull, 1);
+    assert_eq!(normalize_default(&is_user_level.default), Some("0".into()));
+    get_column_info(&conn, "workspaces", "sort_index");
+
+    let global: (String, String, i64) = conn
+        .query_row(
+            "SELECT id, path, is_user_level FROM workspaces WHERE id = 'user'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("query seeded global workspace");
+    assert_eq!(global, ("user".into(), "~".into(), 1));
+}
+
+#[test]
+fn workspace_dao_serializes_user_level_and_orders_global_first() {
+    let db = Database::memory().expect("create memory db");
+    {
+        let conn = db.conn.lock().expect("lock conn");
+        conn.execute(
+            "INSERT INTO workspaces (id, name, path) VALUES ('project', 'A Project', '/tmp/project')",
+            [],
+        )
+        .expect("insert project workspace");
+    }
+
+    let workspaces = db.get_all_workspaces().expect("query workspaces");
+    let serialized = serde_json::to_value(&workspaces).expect("serialize workspaces");
+
+    assert_eq!(serialized[0]["id"], "user");
+    assert_eq!(serialized[0]["isUserLevel"], true);
+    let project = serialized
+        .as_array()
+        .expect("workspace array")
+        .iter()
+        .find(|workspace| workspace["id"] == "project")
+        .expect("project workspace");
+    assert_eq!(project["isUserLevel"], false);
+}
+
+#[test]
+fn user_level_active_groups_use_global_flags_not_stale_workspace_copy() {
+    let db = Database::memory().expect("create memory db");
+    {
+        let conn = db.conn.lock().expect("lock conn");
+        conn.execute_batch(
+            r#"
+            INSERT OR IGNORE INTO workspaces (id, name, path) VALUES ('user', '全局', '~');
+            INSERT INTO skill_groups (id, name, is_active) VALUES
+                ('base', 'Base', 0),
+                ('global-a', 'Global A', 1),
+                ('global-b', 'Global B', 1);
+            INSERT INTO workspace_group_active (workspace_id, group_id)
+                VALUES ('user', 'base');
+            "#,
+        )
+        .expect("seed divergent global group state");
+    }
+
+    assert_eq!(
+        db.get_workspace_active_group_ids("user")
+            .expect("query global active groups"),
+        vec!["global-a".to_string(), "global-b".to_string()]
+    );
+}
+
+#[test]
+fn user_level_workspace_path_and_row_are_protected_by_dao() {
+    let db = Database::memory().expect("create memory db");
+    let mut global = db
+        .get_workspace("user")
+        .expect("query global workspace")
+        .expect("global workspace exists");
+    global.name = "全局设置".into();
+    global.path = "/tmp/must-not-replace-global-path".into();
+
+    db.update_workspace(&global)
+        .expect("update global workspace metadata");
+    let updated = db
+        .get_workspace("user")
+        .expect("query updated global workspace")
+        .expect("global workspace remains");
+    assert_eq!(updated.name, "全局设置");
+    assert_eq!(updated.path, "~");
+
+    let error = db
+        .delete_workspace("user")
+        .expect_err("global workspace must not be deleted");
+    assert!(error.to_string().contains("不可删除"));
+}
+
+#[test]
+fn workspaces_containing_skill_include_global_active_group_without_stale_binding() {
+    let db = Database::memory().expect("create memory db");
+    {
+        let conn = db.conn.lock().expect("lock conn");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS workspace_skill_bindings (
+                workspace_id TEXT NOT NULL,
+                skill_id TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, skill_id),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+            );
+            INSERT OR IGNORE INTO workspaces (id, name, path) VALUES ('user', '全局', '~');
+            INSERT INTO skills (id, name, directory) VALUES ('skill-global', 'Global', 'global');
+            INSERT INTO skill_groups (id, name, is_active) VALUES ('group-global', 'Global', 1);
+            INSERT INTO skill_group_members (group_id, skill_id)
+                VALUES ('group-global', 'skill-global');
+            "#,
+        )
+        .expect("seed global active group");
+    }
+
+    assert_eq!(
+        db.get_workspaces_containing_skill("skill-global")
+            .expect("query affected workspaces"),
+        vec!["user".to_string()]
+    );
+}
+
+#[test]
+fn workspace_skill_bindings_toggle_and_query_union() {
+    let db = Database::memory().expect("create memory db");
+    {
+        let conn = db.conn.lock().expect("lock conn");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS workspace_skill_bindings (
+                workspace_id TEXT NOT NULL,
+                skill_id TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, skill_id),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+            );
+            INSERT INTO skills (id, name, directory) VALUES ('skill-a', 'Skill A', 'skill-a');
+            INSERT INTO workspaces (id, name, path) VALUES
+                ('ws-direct', 'Direct', '/tmp/ws-direct'),
+                ('ws-group', 'Group', '/tmp/ws-group'),
+                ('ws-both', 'Both', '/tmp/ws-both');
+            INSERT INTO skill_groups (id, name) VALUES ('group-a', 'Group A');
+            INSERT INTO skill_group_members (group_id, skill_id) VALUES ('group-a', 'skill-a');
+            INSERT INTO workspace_group_active (workspace_id, group_id) VALUES
+                ('ws-group', 'group-a'),
+                ('ws-both', 'group-a');
+            "#,
+        )
+        .expect("seed workspace skill bindings");
+    }
+
+    db.toggle_workspace_skill("ws-direct", "skill-a", true)
+        .expect("enable direct binding");
+    db.toggle_workspace_skill("ws-direct", "skill-a", true)
+        .expect("enable direct binding idempotently");
+    db.toggle_workspace_skill("ws-both", "skill-a", true)
+        .expect("enable overlapping direct binding");
+
+    {
+        let conn = db.conn.lock().expect("lock conn for orphan bindings");
+        conn.execute_batch(
+            r#"
+            PRAGMA foreign_keys = OFF;
+            INSERT INTO workspace_skill_bindings (workspace_id, skill_id) VALUES
+                ('ws-direct', 'missing-skill'),
+                ('missing-workspace', 'skill-a');
+            PRAGMA foreign_keys = ON;
+            "#,
+        )
+        .expect("seed historical orphan bindings");
+    }
+
+    assert_eq!(
+        db.get_workspace_skill_bindings("ws-direct")
+            .expect("read direct bindings"),
+        vec!["skill-a".to_string()]
+    );
+    assert_eq!(
+        db.get_workspaces_containing_skill("skill-a")
+            .expect("query direct and active-group workspaces"),
+        vec![
+            "ws-both".to_string(),
+            "ws-direct".to_string(),
+            "ws-group".to_string(),
+        ]
+    );
+
+    db.toggle_workspace_skill("ws-direct", "skill-a", false)
+        .expect("disable direct binding");
+    assert!(db
+        .get_workspace_skill_bindings("ws-direct")
+        .expect("read bindings after disable")
+        .is_empty());
+}
+
+#[test]
 fn schema_migration_adds_missing_columns_for_providers() {
     let conn = Connection::open_in_memory().expect("open memory db");
 

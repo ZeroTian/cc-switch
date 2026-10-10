@@ -1,26 +1,30 @@
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { Plus, Edit2, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { V7ConfirmDialog } from "@/components/mcp/formBits";
 import { SkillGroupEditDialog } from "./SkillGroupEditDialog";
-import { AppToggleGroup } from "@/components/common/AppToggleGroup";
+import { APP_DISPLAY_NAME } from "@/components/shell/AppGlyph";
+import {
+  MatrixCell,
+  MatrixColumnHeader,
+  MatrixColumnHighlight,
+} from "@/components/mcp/AppMatrix";
+import { useVisibleAppIds } from "@/components/mcp/useVisibleAppIds";
 import { SKILLS_APP_IDS } from "@/config/appConfig";
 import {
   useSkillGroups,
   useCreateSkillGroup,
   useUpdateSkillGroup,
   useDeleteSkillGroup,
-  useSetGroupActive,
 } from "@/hooks/useSkillGroups";
 import type { SkillGroup, SkillGroupApps } from "@/lib/api/skills";
 
 export function SkillGroupsPanel() {
   const { t } = useTranslation();
   const { data: groups = [], isLoading } = useSkillGroups();
+  const appIds = useVisibleAppIds(SKILLS_APP_IDS);
 
   const [editDialogState, setEditDialogState] = useState<{
     open: boolean;
@@ -35,7 +39,6 @@ export function SkillGroupsPanel() {
   const createMutation = useCreateSkillGroup();
   const updateMutation = useUpdateSkillGroup();
   const deleteMutation = useDeleteSkillGroup();
-  const setActiveMutation = useSetGroupActive();
 
   const handleSave = async (params: {
     name: string;
@@ -72,103 +75,128 @@ export function SkillGroupsPanel() {
     }
   };
 
-  const handleToggleActive = async (group: SkillGroup, checked: boolean) => {
-    try {
-      await setActiveMutation.mutateAsync({ id: group.id, active: checked });
-    } catch (error) {
-      toast.error(t("common.error", "操作失败"), {
-        description: String(error),
-      });
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-5 w-5 animate-spin text-fg-2" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
+    <div className="space-y-3 text-body text-fg-1">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="m-0 text-body text-fg-2">
           {t(
             "skillGroups.description",
-            "将 Skill 按场景分组，一键切换当前激活集合",
+            "管理 Skill 分组及成员；激活范围请在「工作空间」中配置",
           )}
         </p>
         <Button
-          variant="outline"
-          size="sm"
+          variant="neutral"
+          size="compact"
+          className="shrink-0"
           onClick={() => setEditDialogState({ open: true, group: null })}
         >
-          <Plus className="h-4 w-4 mr-1" />
+          <Plus className="h-3.5 w-3.5" />
           {t("skillGroups.new", "新建分组")}
         </Button>
       </div>
 
       {groups.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">
+        <div className="rounded-panel border border-border bg-surface py-12 text-center text-body text-fg-2">
           {t("skillGroups.empty", "还没有分组，点击「新建分组」开始")}
         </div>
       ) : (
-        <TooltipProvider delayDuration={300}>
-          <div className="space-y-2">
-            {groups.map((group) => (
-              <div
-                key={group.id}
-                className={`flex items-center gap-4 rounded-lg px-4 py-3 border ${
-                  group.isActive
-                    ? "border-primary bg-primary/5"
-                    : "border-border-default"
-                }`}
-              >
-                <Checkbox
-                  checked={group.isActive}
-                  onCheckedChange={(v) => handleToggleActive(group, !!v)}
-                  disabled={setActiveMutation.isPending}
-                />
-                <div className="flex-1 min-w-0">
-                  <span
-                    className={`font-medium text-sm ${group.isActive ? "text-primary" : ""}`}
-                  >
-                    {group.name}
-                  </span>
-                  {group.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {group.description}
-                    </p>
-                  )}
+        <div className="scroll-stable overflow-auto rounded-panel border border-border bg-surface">
+          <MatrixColumnHighlight>
+            <div className="min-w-[600px]">
+              <div className="flex h-11 items-center border-b border-border bg-subtle px-2">
+                <span className="min-w-0 flex-1 ps-2 text-body font-medium text-fg-2">
+                  {t("skillGroups.title", "分组")}
+                </span>
+                <div className="flex shrink-0">
+                  {appIds.map((app) => {
+                    const count = groups.filter(
+                      (group) => group.apps[app as keyof SkillGroupApps],
+                    ).length;
+                    return (
+                      <MatrixColumnHeader
+                        key={app}
+                        app={app}
+                        enabledCount={count}
+                        totalCount={groups.length}
+                        scopeTotal={groups.length}
+                        scopeEnabled={count}
+                        scopeFailed={0}
+                        scopeKind="all"
+                        noun={t("skillGroups.title", "分组")}
+                        title={`${APP_DISPLAY_NAME[app]} · ${t("skillGroups.appsLabel", "适用 Agent")} · ${count}/${groups.length}`}
+                      />
+                    );
+                  })}
                 </div>
-                <AppToggleGroup
-                  apps={group.apps}
-                  onToggle={() => {}}
-                  appIds={SKILLS_APP_IDS}
-                />
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => setEditDialogState({ open: true, group })}
-                  >
-                    <Edit2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-destructive hover:text-destructive"
-                    onClick={() => setConfirmDelete({ open: true, group })}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+                <div className="w-16 shrink-0" />
               </div>
-            ))}
-          </div>
-        </TooltipProvider>
+              <div role="list" className="divide-y divide-border">
+                {groups.map((group) => (
+                  <div
+                    key={group.id}
+                    role="listitem"
+                    className="flex min-h-14 items-center px-2 py-2 transition-colors hover:bg-subtle"
+                  >
+                    <div className="min-w-0 flex-1 ps-2 pe-3">
+                      <span className="block truncate text-body font-medium">
+                        {group.name}
+                      </span>
+                      {group.description && (
+                        <p className="m-0 mt-0.5 truncate text-caption text-fg-2">
+                          {group.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0">
+                      {appIds.map((app) => {
+                        const enabled =
+                          group.apps[app as keyof SkillGroupApps] ?? false;
+                        const label = `${group.name} · ${APP_DISPLAY_NAME[app]} · ${t("skillGroups.appsLabel", "适用 Agent")} ${enabled ? "✓" : "—"}`;
+                        return (
+                          <MatrixCell
+                            key={app}
+                            app={app}
+                            state={enabled ? "on" : "off"}
+                            label={label}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="flex w-16 shrink-0 items-center justify-end gap-1">
+                      <Button
+                        variant="quiet"
+                        size="icon-compact"
+                        aria-label={`${t("skillGroups.edit", "编辑分组")}：${group.name}`}
+                        onClick={() =>
+                          setEditDialogState({ open: true, group })
+                        }
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="quiet"
+                        size="icon-compact"
+                        className="hover:text-danger-text"
+                        aria-label={`${t("skillGroups.deleteTitle", "删除分组")}：${group.name}`}
+                        onClick={() => setConfirmDelete({ open: true, group })}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </MatrixColumnHighlight>
+        </div>
       )}
 
       <SkillGroupEditDialog
@@ -179,16 +207,15 @@ export function SkillGroupsPanel() {
         saving={createMutation.isPending || updateMutation.isPending}
       />
 
-      <ConfirmDialog
-        isOpen={confirmDelete.open}
+      <V7ConfirmDialog
+        open={confirmDelete.open}
         title={t("skillGroups.deleteTitle", "删除分组")}
-        message={t(
+        body={t(
           "skillGroups.deleteMessage",
           "确认删除「{{name}}」？分组内的 Skill 不会被卸载。",
           { name: confirmDelete.group?.name },
         )}
-        confirmText={t("common.delete", "删除")}
-        variant="destructive"
+        confirmLabel={t("common.delete", "删除")}
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete({ open: false, group: null })}
       />

@@ -1044,16 +1044,16 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
             : t("skillsPage.viewInstalled"),
         },
         {
-          value: "discover",
-          label: t("skillsPage.viewDiscover"),
-        },
-        {
           value: "groups",
           label: t("skillGroups.title", "分组"),
         },
         {
           value: "workspaces",
           label: t("workspaces.title", "工作空间"),
+        },
+        {
+          value: "discover",
+          label: t("skillsPage.viewDiscover"),
         },
       ]}
       trailing={<div ref={setTabsTrailingSlot} className="flex items-center" />}

@@ -656,11 +656,8 @@ impl SkillService {
                 }
             }
             AppType::ClaudeDesktop | AppType::Mcode => {}
-            AppType::Codex => {
-                if let Some(custom) = crate::settings::get_codex_override_dir() {
-                    return Ok(custom.join("skills"));
-                }
-            }
+            // Codex 按 Agent Skills 标准发现用户技能，配置目录覆盖不改变此路径。
+            AppType::Codex => {}
             AppType::Gemini => {
                 if let Some(custom) = crate::settings::get_gemini_override_dir() {
                     return Ok(custom.join("skills"));
@@ -700,7 +697,7 @@ impl SkillService {
             AppType::Mcode => crate::mcode_config::data_dir().join("skills"),
             AppType::Claude => home.join(".claude").join("skills"),
             AppType::ClaudeDesktop => home.join(".claude-desktop").join("skills"),
-            AppType::Codex => home.join(".codex").join("skills"),
+            AppType::Codex => home.join(".agents").join("skills"),
             AppType::Gemini => home.join(".gemini").join("skills"),
             AppType::GrokBuild => home.join(".grok").join("skills"),
             AppType::OpenCode => home.join(".config").join("opencode").join("skills"),
@@ -710,7 +707,7 @@ impl SkillService {
         })
     }
 
-    fn paths_alias(left: &Path, right: &Path) -> bool {
+    pub(crate) fn paths_alias(left: &Path, right: &Path) -> bool {
         if left == right {
             return true;
         }
@@ -764,7 +761,8 @@ impl SkillService {
 
     fn validate_skill_storage_destination(ssot_dir: &Path) -> Result<()> {
         for app in AppType::all() {
-            if matches!(app, AppType::ClaudeDesktop) {
+            // Unified 是遗留可选 SSOT，天然与 Codex 标准目录重合；投影层保护此别名。
+            if matches!(app, AppType::ClaudeDesktop | AppType::Codex) {
                 continue;
             }
             let app_dir = Self::get_app_skills_dir(&app)?;
@@ -805,7 +803,7 @@ impl SkillService {
                 let mut updated = existing.clone();
                 updated.apps.set_enabled_for(current_app, true);
                 db.save_skill(&updated)?;
-                Self::sync_to_app_dir(&updated.directory, current_app)?;
+                Self::sync_skill_after_change(db, &updated, std::slice::from_ref(current_app))?;
                 log::info!(
                     "Skill {} 已存在，更新 {:?} 启用状态",
                     updated.name,
@@ -1673,15 +1671,14 @@ impl SkillService {
         };
         updated_skill.apps.pi = Self::skill_exists_in_app(&updated_skill.directory, &AppType::Pi);
 
-        // 同步到所有已启用的应用目录
-        for app in updated_skill.apps.enabled_apps() {
-            if matches!(app, AppType::Pi | AppType::Mcode) {
-                continue;
-            }
-            if let Err(e) = Self::sync_to_app_dir(&updated_skill.directory, &app) {
-                log::warn!("同步更新后的 skill 到 {:?} 失败: {e}", app);
-            }
-        }
+        // Pi/MCode 已在上方受保护地刷新；分组应用仍按全局/项目选择集投影。
+        let apps: Vec<AppType> = updated_skill
+            .apps
+            .enabled_apps()
+            .into_iter()
+            .filter(|app| !matches!(app, AppType::Pi | AppType::Mcode))
+            .collect();
+        Self::sync_skill_after_change(db, &updated_skill, &apps)?;
 
         log::info!("Skill {} 更新成功", updated_skill.name);
         Ok(updated_skill)
@@ -1937,7 +1934,26 @@ impl SkillService {
 
         // 4. 刷新所有应用目录的 symlink（指向新 SSOT）
         for app in AppType::all() {
-            let _ = Self::sync_to_app_unlocked(db, &app);
+            let sync = if matches!(
+                app,
+                AppType::Claude
+                    | AppType::Codex
+                    | AppType::Gemini
+                    | AppType::OpenCode
+                    | AppType::Hermes
+            ) {
+                Self::sync_global_to_app(db, &app, Some(&old_dir))
+            } else {
+                Self::sync_to_app_unlocked(db, &app)
+            };
+            match sync {
+                Ok(failed) => result.errors.extend(
+                    failed
+                        .into_iter()
+                        .map(|failure| format!("{app:?}/{}: {}", failure.directory, failure.error)),
+                ),
+                Err(err) => result.errors.push(format!("{app:?}: {err:#}")),
+            }
         }
         for (directory, deployment) in pi_deployments {
             let source = new_dir.join(&directory);
@@ -1951,6 +1967,17 @@ impl SkillService {
         for directory in pi_native_sources {
             if let Err(err) = Self::sync_to_app_dir(&directory, &AppType::Pi) {
                 result.errors.push(format!("{directory}: {err}"));
+            }
+        }
+
+        // 项目清单中的旧 SSOT 链接也必须重定向；不能把断链误判为用户文件。
+        for workspace in db.get_all_workspaces()? {
+            if !workspace.is_user_level {
+                if let Err(err) = crate::services::workspace_skill::WorkspaceSkillService::sync_workspace_with_previous_ssot(
+                    db, &workspace.id, Some(&old_dir),
+                ) {
+                    result.errors.push(format!("工作空间 {}: {err}", workspace.name));
+                }
             }
         }
 
@@ -2077,7 +2104,11 @@ impl SkillService {
         }
 
         if !restored_skill.apps.is_empty() {
-            if let Err(err) = Self::sync_to_app_dir(&restored_skill.directory, current_app) {
+            if let Err(err) = Self::sync_skill_after_change(
+                db,
+                &restored_skill,
+                std::slice::from_ref(current_app),
+            ) {
                 let _ = db.delete_skill(&restored_skill.id);
                 let _ = fs::remove_dir_all(&restore_path);
                 return Err(err);
@@ -2346,7 +2377,26 @@ impl SkillService {
             };
 
             // 保存到数据库
+            let existing = db.get_installed_skill(&skill.id)?.is_some();
             db.save_skill(&skill)?;
+            if existing {
+                // 已有绑定的 app 偏好变化仍按原选择集刷新，避免项目技能泄漏到全局。
+                Self::sync_skill_after_change(
+                    db,
+                    &skill,
+                    &[
+                        AppType::Claude,
+                        AppType::Codex,
+                        AppType::Gemini,
+                        AppType::OpenCode,
+                        AppType::Hermes,
+                    ],
+                )?;
+            } else {
+                // 新导入已经按勾选项部署并记录失败，绑定用户空间以保留该次部署结果。
+                // 此时不重新投影，保留发现来源的真实目录及上方的部分成功摘要。
+                db.toggle_workspace_skill("user", &skill.id, true)?;
+            }
 
             imported.push(skill);
         }
@@ -2411,16 +2461,42 @@ impl SkillService {
     }
 
     fn preflight_install_destination(source: &Path, directory: &str, app: &AppType) -> Result<()> {
-        let ssot_dir = Self::get_ssot_dir()?;
-        let app_dir = Self::get_distinct_app_skills_dir(&ssot_dir, app)?;
         if !matches!(app, AppType::Pi | AppType::Mcode) {
             return Ok(());
         }
+        let ssot_dir = Self::get_ssot_dir()?;
+        let app_dir = Self::get_distinct_app_skills_dir(&ssot_dir, app)?;
         let destination = app_dir.join(directory);
         if destination.exists() || Self::is_symlink(&destination) {
             Self::ensure_pi_skill_destination_matches(source, &destination, directory)?;
         }
         Ok(())
+    }
+
+    /// 安装、更新、恢复、导入均按选择集同步；原生 Pi/MCode 仍使用显式部署。
+    /// 调用方持有 Skills 状态写锁，避免嵌套获取同一锁。
+    fn sync_skill_after_change(
+        db: &Arc<Database>,
+        skill: &InstalledSkill,
+        apps: &[AppType],
+    ) -> Result<()> {
+        for app in apps {
+            if matches!(
+                app,
+                AppType::Claude
+                    | AppType::Codex
+                    | AppType::Gemini
+                    | AppType::OpenCode
+                    | AppType::Hermes
+            ) {
+                Self::sync_to_app_unlocked(db, app)?;
+            } else {
+                Self::sync_to_app_dir(&skill.directory, app)?;
+            }
+        }
+        crate::services::workspace_skill::WorkspaceSkillService::sync_workspaces_for_skill(
+            db, &skill.id,
+        )
     }
 
     fn persist_and_sync_new_skill(
@@ -2431,7 +2507,7 @@ impl SkillService {
         let source = Self::get_ssot_dir()?.join(&skill.directory);
         Self::preflight_install_destination(&source, &skill.directory, app)?;
         db.save_skill(skill)?;
-        if let Err(error) = Self::sync_to_app_dir(&skill.directory, app) {
+        if let Err(error) = Self::sync_skill_after_change(db, skill, std::slice::from_ref(app)) {
             if let Err(rollback_error) = db.delete_skill(&skill.id) {
                 log::error!(
                     "Failed to roll back Skill {} after sync error: {rollback_error}",
@@ -2647,7 +2723,7 @@ impl SkillService {
     }
 
     /// 删除路径（支持 symlink 和真实目录）
-    fn remove_path(path: &Path) -> Result<()> {
+    pub(crate) fn remove_path(path: &Path) -> Result<()> {
         if Self::is_symlink(path) {
             // 符号链接：仅删除链接本身，不影响源文件
             #[cfg(unix)]
@@ -2722,7 +2798,7 @@ impl SkillService {
     }
 
     /// 判断路径是否为指向 SSOT 目录内的符号链接。
-    fn is_symlink_to_ssot(path: &Path, ssot_dir: &Path) -> bool {
+    pub(crate) fn is_symlink_to_ssot(path: &Path, ssot_dir: &Path) -> bool {
         if !Self::is_symlink(path) {
             return false;
         }
@@ -2835,6 +2911,16 @@ impl SkillService {
         if !Self::is_sync_managed_app(app) {
             return Ok(failed);
         }
+        if matches!(
+            app,
+            AppType::Claude
+                | AppType::Codex
+                | AppType::Gemini
+                | AppType::OpenCode
+                | AppType::Hermes
+        ) {
+            return Self::sync_global_to_app(db, app, None);
+        }
 
         let skills = db.get_all_installed_skills()?;
         let ssot_dir = Self::get_ssot_dir()?;
@@ -2888,6 +2974,49 @@ impl SkillService {
             }
         }
 
+        Ok(failed)
+    }
+
+    /// 全局投影只读取全局选择集，供应商切换与分组切换使用同一口径。
+    /// 调用方在常规同步/迁移中持有 Skills 状态锁；工作空间开关复用原有协调方式。
+    pub(crate) fn sync_global_to_app(
+        db: &Arc<Database>,
+        app: &AppType,
+        previous_ssot: Option<&Path>,
+    ) -> Result<Vec<SkillSyncFailure>> {
+        use crate::services::workspace_skill::WorkspaceSkillService;
+        let ssot_dir = Self::get_ssot_dir()?;
+        let app_dir = Self::get_app_skills_dir(app)?;
+        let selected = WorkspaceSkillService::collect_global_skill_ids_for_app(db, app)?;
+        let mut failed = WorkspaceSkillService::sync_skills_to_directory(
+            db,
+            &selected,
+            app,
+            &app_dir,
+            &ssot_dir,
+            previous_ssot,
+            false,
+        )?;
+        if matches!(app, AppType::Codex) {
+            // 旧版目录仍可能被 Codex 发现。只清理已有受管部署，保留自建技能和 .system。
+            let mut legacy_dirs = vec![crate::config::get_home_dir().join(".codex/skills")];
+            if let Some(custom) = crate::settings::get_codex_override_dir() {
+                legacy_dirs.push(custom.join("skills"));
+            }
+            for legacy_dir in legacy_dirs {
+                if !Self::paths_alias(&legacy_dir, &app_dir) {
+                    failed.extend(WorkspaceSkillService::sync_skills_to_directory(
+                        db,
+                        &HashSet::new(),
+                        app,
+                        &legacy_dir,
+                        &ssot_dir,
+                        previous_ssot,
+                        false,
+                    )?);
+                }
+            }
+        }
         Ok(failed)
     }
 
@@ -5757,6 +5886,10 @@ mod tests {
         .unwrap();
 
         assert!(imported[0].apps.codex && imported[0].apps.gemini);
+        assert_eq!(
+            db.get_user_level_workspace_skill_bindings().unwrap(),
+            vec![imported[0].id.clone()]
+        );
         for app in [AppType::Codex, AppType::Gemini] {
             assert!(
                 fs::read_to_string(app_copy(app.clone()).join("SKILL.md"))
@@ -5809,6 +5942,10 @@ mod tests {
         assert_eq!(installed.len(), 1);
         assert!(installed[0].apps.claude);
         assert!(!installed[0].apps.codex);
+        assert_eq!(
+            db.get_user_level_workspace_skill_bindings().unwrap(),
+            vec![installed[0].id.clone()]
+        );
     }
 
     #[tokio::test]
@@ -6411,6 +6548,493 @@ mod tests {
         }
     }
 
+    fn seed_isolation_bindings(db: &Arc<Database>, workspace: &Path) {
+        let conn = db.conn.lock().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS workspace_skill_bindings (
+                workspace_id TEXT NOT NULL, skill_id TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, skill_id)
+             );",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO workspaces (id, name, path) VALUES ('project', 'Project', ?1)",
+            [workspace.to_string_lossy().as_ref()],
+        )
+        .unwrap();
+    }
+
+    fn save_isolation_skill(db: &Arc<Database>, directory: &str, claude: bool, codex: bool) {
+        let mut skill = poisoned_skill(directory, directory);
+        skill.apps.claude = claude;
+        skill.apps.codex = codex;
+        db.save_skill(&skill).unwrap();
+        write_skill(
+            &SkillService::get_ssot_dir().unwrap().join(directory),
+            directory,
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn codex_isolation_projects_obey_selection_group_flags_and_skill_flags() {
+        let temp = tempdir().unwrap();
+        let _home = TestHomeGuard::set(temp.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let project = temp.path().join("project");
+        let db = Arc::new(Database::memory().unwrap());
+        seed_isolation_bindings(&db, &project);
+        save_isolation_skill(&db, "shared", true, true);
+        save_isolation_skill(&db, "claude-group", true, true);
+        save_isolation_skill(&db, "direct", false, true);
+        save_isolation_skill(&db, "codex-disabled", true, false);
+        db.conn
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "INSERT INTO skill_groups (id, name, enabled_claude, enabled_codex) VALUES
+                ('both', 'Both', 1, 1), ('claude-only', 'Claude only', 1, 0);
+             INSERT INTO skill_group_members (group_id, skill_id) VALUES
+                ('both', 'shared'), ('both', 'codex-disabled'), ('claude-only', 'claude-group');
+             INSERT INTO workspace_group_active (workspace_id, group_id) VALUES
+                ('project', 'both'), ('project', 'claude-only');
+             INSERT INTO workspace_skill_bindings (workspace_id, skill_id)
+                VALUES ('project', 'direct');",
+            )
+            .unwrap();
+
+        crate::services::workspace_skill::WorkspaceSkillService::sync_active_groups_to_workspace(
+            &db, "project",
+        )
+        .unwrap();
+        let codex = project.join(".agents/skills");
+        let claude = project.join(".claude/skills");
+        assert!(codex.join("shared/SKILL.md").exists());
+        assert!(codex.join("direct/SKILL.md").exists());
+        assert!(!codex.join("claude-group").exists());
+        assert!(!codex.join("codex-disabled").exists());
+        assert!(claude.join("shared/SKILL.md").exists());
+        assert!(claude.join("claude-group/SKILL.md").exists());
+        assert!(claude.join("codex-disabled/SKILL.md").exists());
+        assert!(!claude.join("direct").exists());
+
+        SkillService::toggle_app(&db, "shared", &AppType::Codex, false).unwrap();
+        assert!(!codex.join("shared").exists());
+        assert!(claude.join("shared/SKILL.md").exists());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn codex_isolation_regular_sync_keeps_only_global_selection_and_preserves_user_skills() {
+        let temp = tempdir().unwrap();
+        let _home = TestHomeGuard::set(temp.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let db = Arc::new(Database::memory().unwrap());
+        seed_isolation_bindings(&db, &temp.path().join("project"));
+        for directory in [
+            "global-direct",
+            "global-group",
+            "claude-only",
+            "project-only",
+            "user-owned",
+            "identical-user",
+        ] {
+            save_isolation_skill(&db, directory, true, true);
+        }
+        db.conn.lock().unwrap().execute_batch(
+            "INSERT INTO skill_groups (id, name, is_active, enabled_claude, enabled_codex) VALUES
+                ('global', 'Global', 1, 1, 1), ('claude', 'Claude', 1, 1, 0);
+             INSERT INTO skill_group_members (group_id, skill_id) VALUES
+                ('global', 'global-group'), ('claude', 'claude-only');
+             INSERT INTO workspace_skill_bindings (workspace_id, skill_id) VALUES
+                ('user', 'global-direct'), ('project', 'project-only');",
+        ).unwrap();
+        let source = SkillService::get_ssot_dir().unwrap();
+        let codex = temp.path().join(".agents/skills");
+        fs::create_dir_all(&codex).unwrap();
+        SkillService::create_symlink(&source.join("project-only"), &codex.join("project-only"))
+            .unwrap();
+        write_skill(&codex.join("user-owned"), "user version");
+        SkillService::copy_dir_recursive(
+            &source.join("identical-user"),
+            &codex.join("identical-user"),
+        )
+        .unwrap();
+        let legacy = temp.path().join(".codex/skills");
+        fs::create_dir_all(&legacy).unwrap();
+        SkillService::create_symlink(&source.join("project-only"), &legacy.join("project-only"))
+            .unwrap();
+        write_skill(&legacy.join("user-owned"), "legacy user version");
+        SkillService::copy_dir_recursive(
+            &source.join("identical-user"),
+            &legacy.join("identical-user"),
+        )
+        .unwrap();
+        write_skill(&legacy.join(".system"), "system");
+
+        SkillService::sync_to_app(&db, &AppType::Codex).unwrap();
+        SkillService::sync_to_app(&db, &AppType::Claude).unwrap();
+        assert!(codex.join("global-direct/SKILL.md").exists());
+        assert!(codex.join("global-group/SKILL.md").exists());
+        assert!(!codex.join("project-only").exists());
+        assert!(!codex.join("claude-only").exists());
+        assert!(!legacy.join("project-only").is_symlink());
+        assert!(fs::read_to_string(codex.join("user-owned/SKILL.md"))
+            .unwrap()
+            .contains("user version"));
+        assert!(fs::read_to_string(legacy.join("user-owned/SKILL.md"))
+            .unwrap()
+            .contains("legacy user version"));
+        assert!(legacy.join(".system/SKILL.md").exists());
+        for root in [&codex, &legacy] {
+            assert!(root.join("identical-user/SKILL.md").exists());
+            assert!(!root.join("identical-user/.cc-switch-managed").exists());
+        }
+        assert!(temp
+            .path()
+            .join(".claude/skills/claude-only/SKILL.md")
+            .exists());
+        assert!(!temp.path().join(".claude/skills/project-only").exists());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn codex_isolation_migration_retargets_project_links_without_global_leakage() {
+        let temp = tempdir().unwrap();
+        let _home = TestHomeGuard::set(temp.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::Unified);
+        let project = temp.path().join("project");
+        let db = Arc::new(Database::memory().unwrap());
+        seed_isolation_bindings(&db, &project);
+        save_isolation_skill(&db, "project-only", true, true);
+        save_isolation_skill(&db, "global-direct", true, true);
+        db.conn
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "INSERT INTO workspace_skill_bindings (workspace_id, skill_id) VALUES
+                ('project', 'project-only'), ('user', 'global-direct');",
+            )
+            .unwrap();
+        let old_source = SkillService::get_ssot_dir().unwrap();
+        for app_dir in [".agents/skills", ".claude/skills"] {
+            let directory = project.join(app_dir);
+            fs::create_dir_all(&directory).unwrap();
+            SkillService::create_symlink(
+                &old_source.join("project-only"),
+                &directory.join("project-only"),
+            )
+            .unwrap();
+            fs::write(
+                directory.join(".cc-switch-managed.json"),
+                "[\"project-only\"]",
+            )
+            .unwrap();
+            write_skill(&directory.join("user-owned"), "project user version");
+        }
+        let legacy = temp.path().join(".codex/skills");
+        fs::create_dir_all(&legacy).unwrap();
+        SkillService::create_symlink(
+            &old_source.join("project-only"),
+            &legacy.join("project-only"),
+        )
+        .unwrap();
+        write_skill(&old_source.join(".system"), "system");
+
+        let result = SkillService::migrate_storage(&db, SkillStorageLocation::CcSwitch).unwrap();
+        assert_eq!(result.migrated_count, 2);
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        let new_source = temp.path().join(".cc-switch/skills/project-only");
+        for app_dir in [".agents/skills", ".claude/skills"] {
+            let directory = project.join(app_dir);
+            assert_eq!(
+                fs::read_link(directory.join("project-only")).unwrap(),
+                new_source
+            );
+            assert!(directory.join("project-only/SKILL.md").exists());
+            assert!(fs::read_to_string(directory.join("user-owned/SKILL.md"))
+                .unwrap()
+                .contains("project user version"));
+        }
+        assert!(!old_source.join("project-only").exists());
+        assert!(old_source.join("global-direct/SKILL.md").exists());
+        assert!(old_source.join(".system/SKILL.md").exists());
+        assert!(!legacy.join("project-only").is_symlink());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn codex_isolation_unified_alias_never_deletes_source() {
+        let temp = tempdir().unwrap();
+        let _home = TestHomeGuard::set(temp.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::Unified);
+        let db = Arc::new(Database::memory().unwrap());
+        seed_isolation_bindings(&db, &temp.path().join("project"));
+        save_isolation_skill(&db, "unselected-source", true, true);
+        let source = temp.path().join(".agents/skills/unselected-source");
+        SkillService::sync_to_app(&db, &AppType::Codex).unwrap();
+        let _ = SkillService::sync_to_app_dir("unselected-source", &AppType::Codex);
+        let _ = SkillService::remove_from_app("unselected-source", &AppType::Codex);
+        assert!(source.join("SKILL.md").is_file());
+        assert!(
+            !source.is_symlink(),
+            "SSOT must not become a self-referencing symlink"
+        );
+        assert!(!temp.path().join(".codex/skills/unselected-source").exists());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn codex_isolation_non_git_workspace_projects_into_unclaimed_direct_git_children() {
+        let temp = tempdir().unwrap();
+        let _home = TestHomeGuard::set(temp.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let root = temp.path().join("m");
+        let child = root.join("crm");
+        let standalone = root.join("alert-ops");
+        let ordinary = root.join("docs");
+        fs::create_dir_all(child.join(".git")).unwrap();
+        fs::create_dir_all(standalone.join(".git")).unwrap();
+        fs::create_dir_all(&ordinary).unwrap();
+        let db = Arc::new(Database::memory().unwrap());
+        seed_isolation_bindings(&db, &root);
+        save_isolation_skill(&db, "parent-selected", true, true);
+        save_isolation_skill(&db, "child-selected", true, true);
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO workspaces (id, name, path) VALUES ('standalone', 'Standalone', ?1)",
+                [standalone.to_string_lossy().as_ref()],
+            )
+            .unwrap();
+            conn.execute_batch(
+                "INSERT INTO workspace_skill_bindings (workspace_id, skill_id) VALUES
+                ('project', 'parent-selected'), ('standalone', 'child-selected');",
+            )
+            .unwrap();
+        }
+        let service = crate::services::workspace_skill::WorkspaceSkillService::sync_active_groups_to_workspace;
+        service(&db, "standalone").unwrap();
+        service(&db, "project").unwrap();
+        assert!(root
+            .join(".agents/skills/parent-selected/SKILL.md")
+            .exists());
+        for app_dir in [".agents/skills", ".claude/skills"] {
+            assert!(child
+                .join(app_dir)
+                .join("parent-selected/SKILL.md")
+                .exists());
+            assert!(standalone
+                .join(app_dir)
+                .join("child-selected/SKILL.md")
+                .exists());
+            assert!(!standalone.join(app_dir).join("parent-selected").exists());
+            assert!(!ordinary.join(app_dir).exists());
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn codex_isolation_group_app_update_refreshes_global_and_project_projections() {
+        let temp = tempdir().unwrap();
+        let _home = TestHomeGuard::set(temp.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let project = temp.path().join("project");
+        let db = Arc::new(Database::memory().unwrap());
+        seed_isolation_bindings(&db, &project);
+        save_isolation_skill(&db, "selected", true, true);
+        db.conn.lock().unwrap().execute_batch(
+            "INSERT INTO skill_groups (id, name, is_active, enabled_claude, enabled_codex)
+                VALUES ('both', 'Both', 1, 1, 1);
+             INSERT INTO skill_group_members (group_id, skill_id) VALUES ('both', 'selected');
+             INSERT INTO workspace_group_active (workspace_id, group_id) VALUES ('project', 'both');",
+        ).unwrap();
+        let service = crate::services::workspace_skill::WorkspaceSkillService::sync_active_groups_to_workspace;
+        service(&db, "user").unwrap();
+        service(&db, "project").unwrap();
+        for root in [temp.path(), project.as_path()] {
+            assert!(root.join(".agents/skills/selected/SKILL.md").exists());
+        }
+        let group = db.get_skill_group("both").unwrap().unwrap();
+        let mut apps = group.apps;
+        apps.codex = false;
+        crate::services::skill_group::SkillGroupService::update(
+            &db,
+            "both",
+            "Both".into(),
+            None,
+            apps.clone(),
+        )
+        .unwrap();
+        for root in [temp.path(), project.as_path()] {
+            assert!(!root.join(".agents/skills/selected").exists());
+            assert!(root.join(".claude/skills/selected/SKILL.md").exists());
+        }
+        apps.codex = true;
+        crate::services::skill_group::SkillGroupService::update(
+            &db,
+            "both",
+            "Both".into(),
+            None,
+            apps,
+        )
+        .unwrap();
+        for root in [temp.path(), project.as_path()] {
+            assert!(root.join(".agents/skills/selected/SKILL.md").exists());
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn codex_isolation_group_delete_removes_group_projection_and_keeps_direct_binding() {
+        let temp = tempdir().unwrap();
+        let _home = TestHomeGuard::set(temp.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let project = temp.path().join("project");
+        let db = Arc::new(Database::memory().unwrap());
+        seed_isolation_bindings(&db, &project);
+        save_isolation_skill(&db, "grouped", true, true);
+        save_isolation_skill(&db, "direct", true, true);
+        db.conn
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "INSERT INTO skill_groups (id, name, is_active, enabled_claude, enabled_codex)
+                VALUES ('both', 'Both', 1, 1, 1);
+             INSERT INTO skill_group_members (group_id, skill_id) VALUES ('both', 'grouped');
+             INSERT INTO workspace_group_active (workspace_id, group_id) VALUES ('project', 'both');
+             INSERT INTO workspace_skill_bindings (workspace_id, skill_id) VALUES
+                ('user', 'direct'), ('project', 'direct');",
+            )
+            .unwrap();
+        let service = crate::services::workspace_skill::WorkspaceSkillService::sync_active_groups_to_workspace;
+        service(&db, "user").unwrap();
+        service(&db, "project").unwrap();
+        // 命令的删除前同步入口：捕获工作空间后交给服务删除并刷新投影。
+        let affected = db.get_workspaces_with_active_group("both").unwrap();
+        db.delete_skill_group("both").unwrap();
+        crate::services::skill_group::SkillGroupService::sync_after_delete(&db, &affected).unwrap();
+        for root in [temp.path(), project.as_path()] {
+            for app_dir in [".agents/skills", ".claude/skills"] {
+                assert!(!root.join(app_dir).join("grouped").exists());
+                assert!(root.join(app_dir).join("direct/SKILL.md").exists());
+            }
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn codex_isolation_install_and_reinstall_do_not_bypass_workspace_selection() {
+        let temp = tempdir().unwrap();
+        let _home = TestHomeGuard::set(temp.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let project = temp.path().join("project");
+        let db = Arc::new(Database::memory().unwrap());
+        seed_isolation_bindings(&db, &project);
+        let mut skill = poisoned_skill("owner/repo:installed", "installed");
+        skill.apps.codex = true;
+        skill.repo_owner = Some("owner".into());
+        skill.repo_name = Some("repo".into());
+        write_skill(
+            &SkillService::get_ssot_dir().unwrap().join("installed"),
+            "installed",
+        );
+        SkillService::persist_and_sync_new_skill(&db, &skill, &AppType::Codex).unwrap();
+        assert!(!temp.path().join(".agents/skills/installed").exists());
+        db.toggle_workspace_skill("project", &skill.id, true)
+            .unwrap();
+        db.conn.lock().unwrap().execute_batch(
+            "INSERT INTO skill_groups (id, name, enabled_codex) VALUES ('project-group', 'Project', 1);
+             INSERT INTO skill_group_members (group_id, skill_id) VALUES ('project-group', 'owner/repo:installed');
+             INSERT INTO workspace_group_active (workspace_id, group_id) VALUES ('project', 'project-group');",
+        ).unwrap();
+        let discoverable = DiscoverableSkill {
+            key: skill.id.clone(),
+            name: skill.name.clone(),
+            description: String::new(),
+            directory: skill.directory.clone(),
+            readme_url: None,
+            repo_owner: "owner".into(),
+            repo_name: "repo".into(),
+            repo_branch: "main".into(),
+        };
+        SkillService::reuse_existing_install(&db, &discoverable, "installed", &AppType::Codex)
+            .unwrap();
+        assert!(project.join(".agents/skills/installed/SKILL.md").exists());
+        assert!(!temp.path().join(".agents/skills/installed").exists());
+        assert_eq!(
+            db.get_group_member_ids("project-group").unwrap(),
+            vec![skill.id.clone()]
+        );
+        assert_eq!(
+            db.get_workspace_skill_bindings("project").unwrap(),
+            vec![skill.id]
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn codex_isolation_restore_keeps_unselected_skill_in_storage() {
+        let temp = tempdir().unwrap();
+        let _home = TestHomeGuard::set(temp.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let db = Arc::new(Database::memory().unwrap());
+        save_isolation_skill(&db, "restore-only", false, true);
+        let uninstall = SkillService::uninstall(&db, "restore-only").unwrap();
+        let backup = PathBuf::from(uninstall.backup_path.unwrap());
+        let backup_id = backup.file_name().unwrap().to_str().unwrap();
+        SkillService::restore_from_backup(&db, backup_id, &AppType::Codex).unwrap();
+        assert!(temp
+            .path()
+            .join(".cc-switch/skills/restore-only/SKILL.md")
+            .exists());
+        assert!(!temp.path().join(".agents/skills/restore-only").exists());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn codex_isolation_import_refreshes_existing_project_binding_without_global_projection() {
+        let temp = tempdir().unwrap();
+        let _home = TestHomeGuard::set(temp.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let project = temp.path().join("project");
+        let db = Arc::new(Database::memory().unwrap());
+        seed_isolation_bindings(&db, &project);
+        let source = SkillService::get_ssot_dir().unwrap().join("imported");
+        write_skill(&source, "imported");
+        let skill = poisoned_skill("local:imported", "imported");
+        db.save_skill(&skill).unwrap();
+        db.toggle_workspace_skill("project", &skill.id, true)
+            .unwrap();
+        db.conn.lock().unwrap().execute_batch(
+            "INSERT INTO skill_groups (id, name, enabled_codex) VALUES ('import-group', 'Import', 1);
+             INSERT INTO skill_group_members (group_id, skill_id) VALUES ('import-group', 'local:imported');
+             INSERT INTO workspace_group_active (workspace_id, group_id) VALUES ('project', 'import-group');",
+        ).unwrap();
+        let global = temp.path().join(".agents/skills");
+        fs::create_dir_all(&global).unwrap();
+        SkillService::create_symlink(&source, &global.join("imported")).unwrap();
+        SkillService::import_from_apps(
+            &db,
+            vec![ImportSkillSelection {
+                directory: "imported".into(),
+                apps: SkillApps::only(&AppType::Codex),
+            }],
+        )
+        .unwrap();
+        assert!(project.join(".agents/skills/imported/SKILL.md").exists());
+        assert!(source.join("SKILL.md").exists());
+        assert!(!global.join("imported").exists());
+        assert_eq!(
+            db.get_group_member_ids("import-group").unwrap(),
+            vec![skill.id.clone()]
+        );
+        assert_eq!(
+            db.get_workspace_skill_bindings("project").unwrap(),
+            vec![skill.id]
+        );
+    }
+
     #[test]
     fn persist_updated_skill_metadata_uses_database_apps() {
         let db = Arc::new(Database::memory().expect("memory db"));
@@ -6894,6 +7518,14 @@ mod tests {
         good.name = "z-healthy".to_string();
         good.apps = SkillApps::only(&AppType::Claude);
         db.save_skill(&good).expect("seed good row");
+        db.conn
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "INSERT INTO workspace_skill_bindings (workspace_id, skill_id) VALUES
+                ('user', 'owner/repo:bad'), ('user', 'owner/repo:good');",
+            )
+            .expect("select both rows globally");
 
         SkillService::sync_to_app(&db, &AppType::Claude).expect("sync must not abort");
 
@@ -7493,6 +8125,7 @@ mod tests {
     fn resync_all_apps_reports_each_app_and_failed_skills() {
         let home = tempdir().expect("home");
         let _home = TestHomeGuard::set(home.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
         let ssot_dir = SkillService::get_ssot_dir().expect("ssot dir");
         write_skill(&ssot_dir.join("good-skill"), "good");
 
@@ -7505,6 +8138,14 @@ mod tests {
         let mut bad = poisoned_skill("owner/repo:bad", "../../escape-sync");
         bad.apps = SkillApps::only(&AppType::Claude);
         db.save_skill(&bad).expect("seed poisoned row");
+        db.conn
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "INSERT INTO workspace_skill_bindings (workspace_id, skill_id) VALUES
+                ('user', 'owner/repo:bad'), ('user', 'owner/repo:good');",
+            )
+            .expect("select both rows globally");
 
         let outcomes = SkillService::resync_all_apps(&db);
 
@@ -7525,6 +8166,70 @@ mod tests {
             assert!(dir.join("good-skill").join("SKILL.md").exists());
         }
         assert!(outcomes.iter().filter(|o| o.app != "claude").all(|o| o.ok));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn resync_global_reports_selected_conflicts_without_overwriting_user_skills() {
+        let home = tempdir().expect("home");
+        let _home = TestHomeGuard::set(home.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let db = Arc::new(Database::memory().expect("memory db"));
+        for directory in ["healthy", "conflict"] {
+            save_isolation_skill(&db, directory, true, false);
+            db.toggle_workspace_skill("user", directory, true).unwrap();
+        }
+        let mut unselected = poisoned_skill("unselected", "../../unselected");
+        unselected.apps = SkillApps::only(&AppType::Claude);
+        db.save_skill(&unselected).unwrap();
+        let app_dir = SkillService::get_app_skills_dir(&AppType::Claude).unwrap();
+        write_skill(&app_dir.join("conflict"), "user version");
+
+        let outcomes = SkillService::resync_all_apps(&db);
+        let claude = outcomes
+            .iter()
+            .find(|outcome| outcome.app == "claude")
+            .unwrap();
+        assert!(
+            !claude.ok,
+            "the selected conflict must be reported: {claude:?}"
+        );
+        assert!(
+            claude.error.is_none(),
+            "one skill must not fail the whole app"
+        );
+        assert_eq!(claude.failed_skills.len(), 1);
+        assert_eq!(claude.failed_skills[0].directory, "conflict");
+        assert!(claude.failed_skills[0].error.contains("非本工具管理"));
+        assert!(app_dir.join("healthy/SKILL.md").is_file());
+        assert!(fs::read_to_string(app_dir.join("conflict/SKILL.md"))
+            .unwrap()
+            .contains("user version"));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn resync_global_reports_missing_selected_source() {
+        let home = tempdir().expect("home");
+        let _home = TestHomeGuard::set(home.path());
+        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let mut missing = poisoned_skill("missing", "missing-source");
+        missing.apps = SkillApps::only(&AppType::Claude);
+        db.save_skill(&missing).unwrap();
+        db.toggle_workspace_skill("user", "missing", true).unwrap();
+
+        let outcomes = SkillService::resync_all_apps(&db);
+        let claude = outcomes
+            .iter()
+            .find(|outcome| outcome.app == "claude")
+            .unwrap();
+        assert!(!claude.ok);
+        assert!(claude.error.is_none());
+        assert_eq!(claude.failed_skills.len(), 1);
+        assert_eq!(claude.failed_skills[0].directory, "missing-source");
+        assert!(claude.failed_skills[0].error.contains("SKILL.md"));
+        assert!(claude.failed_skills[0].error.contains("os error"));
     }
 
     /// OpenClaw 不支持 Skills，`~/.openclaw/skills` 归它自己：里面和受管 Skill 同名的

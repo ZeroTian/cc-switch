@@ -1,19 +1,14 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { DialogTitle } from "@/components/ui/dialog";
+import { V7Dialog } from "@/components/mcp/formBits";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Search } from "lucide-react";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { AppToggleGroup } from "@/components/common/AppToggleGroup";
+import { Loader2 } from "lucide-react";
+import { SearchField } from "@/components/ui/search-field";
+import { AppGlyph, APP_DISPLAY_NAME } from "@/components/shell/AppGlyph";
 import { SKILLS_APP_IDS } from "@/config/appConfig";
 import { useInstalledSkills } from "@/hooks/useSkills";
 import {
@@ -64,11 +59,17 @@ export function SkillGroupEditDialog({
   const addMutation = useAddSkillToGroup();
   const removeMutation = useRemoveSkillFromGroup();
 
-  const filtered = installedSkills.filter(
-    (s) =>
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      (s.description ?? "").toLowerCase().includes(search.toLowerCase()),
-  );
+  const selectedSkillIds = new Set(memberIds);
+  const filtered = installedSkills
+    .filter(
+      (s) =>
+        s.name.toLowerCase().includes(search.toLowerCase()) ||
+        (s.description ?? "").toLowerCase().includes(search.toLowerCase()),
+    )
+    .sort(
+      (a, b) =>
+        Number(selectedSkillIds.has(b.id)) - Number(selectedSkillIds.has(a.id)),
+    );
 
   const toggleMember = (skillId: string, checked: boolean) => {
     if (!group) return;
@@ -93,108 +94,114 @@ export function SkillGroupEditDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg" zIndex="top">
-        <DialogHeader>
-          <DialogTitle>
-            {group
-              ? t("skillGroups.edit", "编辑分组")
-              : t("skillGroups.create", "新建分组")}
-          </DialogTitle>
-        </DialogHeader>
+    <V7Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogTitle className="text-section">
+        {group
+          ? t("skillGroups.edit", "编辑分组")
+          : t("skillGroups.create", "新建分组")}
+      </DialogTitle>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 min-h-0">
-          <Input
-            placeholder={t("skillGroups.namePlaceholder", "分组名称")}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Textarea
-            placeholder={t(
-              "skillGroups.descriptionPlaceholder",
-              "描述（可选）",
-            )}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={2}
-          />
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">
-              {t("skillGroups.appsLabel", "适用 Agent")}
-            </span>
-            <TooltipProvider delayDuration={300}>
-              <AppToggleGroup
-                apps={apps}
-                onToggle={handleToggleApp}
-                appIds={SKILLS_APP_IDS}
-              />
-            </TooltipProvider>
+      <div className="min-h-0 space-y-4 overflow-y-auto text-body">
+        <Input
+          placeholder={t("skillGroups.namePlaceholder", "分组名称")}
+          aria-label={t("skillGroups.namePlaceholder", "分组名称")}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <Textarea
+          placeholder={t("skillGroups.descriptionPlaceholder", "描述（可选）")}
+          value={description}
+          aria-label={t("skillGroups.descriptionPlaceholder", "描述（可选）")}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={2}
+        />
+        <div className="space-y-2">
+          <div className="text-body font-medium text-fg-1">
+            {t("skillGroups.appsLabel", "适用 Agent")}
           </div>
-
-          {group && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">
-                {t("skillGroups.selectSkills", "选择 Skill")}
-              </div>
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder={t("skillGroups.searchSkills", "搜索 Skill")}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-8"
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {SKILLS_APP_IDS.map((app) => (
+              <label
+                key={app}
+                className="flex cursor-pointer items-center gap-2 text-caption text-fg-1"
+              >
+                <Checkbox
+                  checked={apps[app as keyof SkillGroupApps] ?? false}
+                  onCheckedChange={(checked) => handleToggleApp(app, checked)}
                 />
-              </div>
-              <div className="space-y-1 border rounded-md p-2">
-                {filtered.length === 0 ? (
-                  <div className="text-sm text-muted-foreground py-2 text-center">
-                    {t("skillGroups.noSkills", "没有已安装的 Skill")}
-                  </div>
-                ) : (
-                  filtered.map((skill) => {
-                    const checked = memberIds.includes(skill.id);
-                    return (
-                      <label
-                        key={skill.id}
-                        className="flex items-start gap-2 cursor-pointer rounded px-1 py-1 hover:bg-accent"
-                      >
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={(v) => toggleMember(skill.id, !!v)}
-                          disabled={
-                            addMutation.isPending || removeMutation.isPending
-                          }
-                          className="mt-0.5"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">
-                            {skill.name}
-                          </div>
-                          {skill.description && (
-                            <div className="text-xs text-muted-foreground truncate">
-                              {skill.description}
-                            </div>
-                          )}
-                        </div>
-                      </label>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
+                <AppGlyph app={app} size={14} badgeClassName="bg-surface" />
+                {APP_DISPLAY_NAME[app]}
+              </label>
+            ))}
+          </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
-            {t("common.cancel", "取消")}
-          </Button>
-          <Button onClick={handleSave} disabled={!name.trim() || saving}>
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {t("common.save", "保存")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {group && (
+          <div className="space-y-2">
+            <div className="text-body font-medium text-fg-1">
+              {t("skillGroups.selectSkills", "选择 Skill")}
+            </div>
+            <SearchField
+              placeholder={t("skillGroups.searchSkills", "搜索 Skill")}
+              aria-label={t("skillGroups.searchSkills", "搜索 Skill")}
+              value={search}
+              onValueChange={setSearch}
+              clearLabel={t("common.clear", "清除")}
+            />
+            <div className="max-h-60 divide-y divide-border overflow-y-auto rounded-panel border border-border bg-surface">
+              {filtered.length === 0 ? (
+                <div className="py-6 text-center text-body text-fg-2">
+                  {t("skillGroups.noSkills", "没有已安装的 Skill")}
+                </div>
+              ) : (
+                filtered.map((skill) => {
+                  const checked = selectedSkillIds.has(skill.id);
+                  return (
+                    <label
+                      key={skill.id}
+                      className="flex cursor-pointer items-start gap-3 px-3 py-2.5 transition-colors hover:bg-subtle/50"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) => toggleMember(skill.id, !!v)}
+                        disabled={
+                          addMutation.isPending || removeMutation.isPending
+                        }
+                        className="mt-0.5"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate text-body font-medium text-fg-1">
+                          {skill.name}
+                        </div>
+                        {skill.description && (
+                          <div className="truncate text-caption text-fg-2">
+                            {skill.description}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end gap-2 pt-1">
+        <Button variant="neutral" size="regular" onClick={onClose}>
+          {t("common.cancel", "取消")}
+        </Button>
+        <Button
+          variant="solid"
+          size="regular"
+          onClick={handleSave}
+          disabled={!name.trim() || saving}
+        >
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          {t("common.save", "保存")}
+        </Button>
+      </div>
+    </V7Dialog>
   );
 }

@@ -95,7 +95,8 @@ interface MatrixCellProps {
   app?: AppId;
   /** 「serena · Codex：已启用」 */
   label: string;
-  onClick: () => void;
+  /** 不传操作时只读展示，供分组页显示适用范围。 */
+  onClick?: () => void;
   disabled?: boolean;
 }
 
@@ -111,47 +112,59 @@ export function MatrixCell({
   disabled,
 }: MatrixCellProps) {
   const tracking = useColumnTracking(app);
+  const indicator = (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex h-4 w-4 items-center justify-center rounded-[4px] border-[1.5px] transition-colors duration-150",
+        state === "on" &&
+          "border-action bg-action text-action-fg group-hover/cell:border-action-hover group-hover/cell:bg-action-hover",
+        state === "off" &&
+          "border-border-strong bg-surface group-hover/cell:border-fg-3",
+        state === "fail" && "border-warning bg-warning-soft text-warning-text",
+      )}
+    >
+      {state === "fail" ? (
+        <AlertTriangle className="h-3 w-3" strokeWidth={2.25} />
+      ) : (
+        <Check
+          className={cn(
+            "h-3 w-3 transition-transform duration-[120ms] ease-out motion-reduce:transition-none",
+            state === "on" ? "scale-100" : "scale-0",
+          )}
+          strokeWidth={3}
+        />
+      )}
+    </span>
+  );
   return (
     <span className="flex w-9 shrink-0 justify-center" {...tracking}>
       <HoverTip content={label}>
-        <button
-          type="button"
-          aria-pressed={state === "on"}
-          aria-label={label}
-          disabled={disabled}
-          data-state={state}
-          onClick={(event) => {
-            event.stopPropagation();
-            onClick();
-          }}
-          className="group/cell flex h-7 w-7 items-center justify-center rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          <span
-            aria-hidden="true"
-            className={cn(
-              // 和 ui-checkbox 同一个外观：1.5px 描边、白底；开 = 主题色底 + 勾（勾从中心放大出来）
-              "flex h-4 w-4 items-center justify-center rounded-[4px] border-[1.5px] transition-colors duration-150",
-              state === "on" &&
-                "border-action bg-action text-action-fg group-hover/cell:border-action-hover group-hover/cell:bg-action-hover",
-              state === "off" &&
-                "border-border-strong bg-surface group-hover/cell:border-fg-3",
-              state === "fail" &&
-                "border-warning bg-warning-soft text-warning-text",
-            )}
+        {onClick ? (
+          <button
+            type="button"
+            aria-pressed={state === "on"}
+            aria-label={label}
+            disabled={disabled}
+            data-state={state}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClick();
+            }}
+            className="group/cell flex h-7 w-7 items-center justify-center rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {state === "fail" ? (
-              <AlertTriangle className="h-3 w-3" strokeWidth={2.25} />
-            ) : (
-              <Check
-                className={cn(
-                  "h-3 w-3 transition-transform duration-[120ms] ease-out motion-reduce:transition-none",
-                  state === "on" ? "scale-100" : "scale-0",
-                )}
-                strokeWidth={3}
-              />
-            )}
+            {indicator}
+          </button>
+        ) : (
+          <span
+            role="img"
+            aria-label={label}
+            data-state={state}
+            className="group/cell flex h-7 w-7 items-center justify-center rounded-control"
+          >
+            {indicator}
           </span>
-        </button>
+        )}
       </HoverTip>
     </span>
   );
@@ -170,8 +183,9 @@ interface MatrixColumnHeaderProps {
   scopeKind: BulkScopeKind;
   /** 「MCP」「Skill」 */
   noun: string;
-  onEnableRest: () => void;
-  onDisableAll: () => void;
+  /** 不传批量操作时只读展示列头，不打开操作弹层。 */
+  onEnableRest?: () => void;
+  onDisableAll?: () => void;
   /** 弹层里额外的文字按钮（Skills：「只看在 Codex 启用的」） */
   extraAction?: { label: string; onClick: () => void };
   /** 标题旁的「?」（Pi：怎么算启用） */
@@ -216,6 +230,44 @@ export function MatrixColumnHeader({
     action();
   };
 
+  const headingClass = cn(
+    "flex h-10 w-[34px] flex-col items-center justify-center gap-0.5 rounded-control text-fg-2 outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+    highlighted && "bg-selected text-fg-1",
+  );
+  const heading = (
+    <>
+      <AppGlyph
+        app={app}
+        size={16}
+        badgeClassName={highlighted ? "bg-selected" : "bg-subtle"}
+      />
+      <span
+        className={cn(
+          "text-badge tabular-nums",
+          highlighted ? "font-semibold" : "font-medium",
+        )}
+      >
+        {enabledCount}
+      </span>
+    </>
+  );
+
+  if (!onEnableRest || !onDisableAll) {
+    return (
+      <span
+        className="relative flex w-9 shrink-0 justify-center"
+        data-column={app}
+        {...tracking}
+      >
+        <HoverTip content={title ?? name} side="top">
+          <span role="img" aria-label={title ?? name} className={headingClass}>
+            {heading}
+          </span>
+        </HoverTip>
+      </span>
+    );
+  }
+
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
       <span
@@ -235,24 +287,9 @@ export function MatrixColumnHeader({
                 noun,
               })}
               data-highlighted={highlighted ? "" : undefined}
-              className={cn(
-                "flex h-10 w-[34px] flex-col items-center justify-center gap-0.5 rounded-control text-fg-2 outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
-                highlighted && "bg-selected text-fg-1",
-              )}
+              className={headingClass}
             >
-              <AppGlyph
-                app={app}
-                size={16}
-                badgeClassName={highlighted ? "bg-selected" : "bg-subtle"}
-              />
-              <span
-                className={cn(
-                  "text-badge tabular-nums",
-                  highlighted ? "font-semibold" : "font-medium",
-                )}
-              >
-                {enabledCount}
-              </span>
+              {heading}
             </button>
           </PopoverPrimitive.Trigger>
         </HoverTip>

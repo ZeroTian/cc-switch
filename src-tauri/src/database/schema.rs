@@ -473,9 +473,34 @@ impl Database {
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 path TEXT NOT NULL UNIQUE,
+                is_user_level INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL DEFAULT 0,
-                updated_at INTEGER NOT NULL DEFAULT 0
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                sort_index INTEGER
             )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // 兼容已处于最新 user_version、但 merge 后缺失工作空间列的数据库。
+        Self::add_column_if_missing(
+            conn,
+            "workspaces",
+            "is_user_level",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(conn, "workspaces", "sort_index", "INTEGER")?;
+        conn.execute(
+            "INSERT OR IGNORE INTO workspaces
+                (id, name, path, is_user_level, created_at, updated_at, sort_index)
+             VALUES ('user', '全局', '~', 1, unixepoch(), unixepoch(), NULL)",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute(
+            "UPDATE workspaces
+             SET name = '全局', path = '~', is_user_level = 1
+             WHERE id = 'user'",
             [],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -501,6 +526,19 @@ impl Database {
                 PRIMARY KEY (workspace_id, group_id),
                 FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
                 FOREIGN KEY (group_id) REFERENCES skill_groups(id) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // 与 v10 migration 保持一致，内存数据库及缺表的最新版本数据库也需要直绑表。
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS workspace_skill_bindings (
+                workspace_id TEXT NOT NULL,
+                skill_id TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, skill_id),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
             )",
             [],
         )
