@@ -2,22 +2,12 @@ import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useVisibleAppIds } from "@/components/mcp/useVisibleAppIds";
 import { MCP_APP_IDS, SKILLS_APP_IDS } from "@/config/appConfig";
+import { APP_IDS } from "@/config/appSpecs";
 
 vi.mock("@/lib/query", () => ({
   useSettingsQuery: () => ({
     data: {
-      visibleApps: {
-        claude: false,
-        "claude-desktop": false,
-        codex: false,
-        gemini: false,
-        grokbuild: false,
-        opencode: false,
-        openclaw: false,
-        hermes: false,
-        pi: false,
-        mcode: false,
-      },
+      visibleApps: Object.fromEntries(APP_IDS.map((app) => [app, false])),
     },
   }),
 }));

@@ -9,7 +9,13 @@ export type AppId =
   | "openclaw"
   | "hermes"
   | "pi"
-  | "mcode";
+  | "kimi"
+  | "dsh"
+  | "mcode"
+  | "agy"
+  | "omp"
+  | "copilot"
+  | "workbuddy";
 
 /** 技能目标也包含仅接入技能管理的桌面应用。 */
 export type SkillAppId = AppId | "catpaw";

@@ -1294,6 +1294,7 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn user_level_sync_never_uses_project_path_branch() {
+        let _home = crate::test_support::TempUserHome::new();
         let db = Arc::new(Database::memory().expect("create memory db"));
         let path_that_is_a_file = NamedTempFile::new().expect("create sentinel file");
         {

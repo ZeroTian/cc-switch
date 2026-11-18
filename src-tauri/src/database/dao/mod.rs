@@ -2,6 +2,7 @@
 //!
 //! Database access operations for each domain
 
+pub mod custom_icons;
 pub mod failover;
 pub mod mcp;
 pub mod profiles;
@@ -21,3 +22,13 @@ pub mod workspaces;
 // 导出 FailoverQueueItem / Profile 供外部使用
 pub use failover::FailoverQueueItem;
 pub use profiles::Profile;
+
+use crate::app_config::AppType;
+use rusqlite::types::{ToSql, ToSqlOutput};
+
+/// 库里 `app_type` 列存的就是 [`AppType::as_str`]，DAO 直接绑定 `&AppType`。
+impl ToSql for AppType {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        self.as_str().to_sql()
+    }
+}

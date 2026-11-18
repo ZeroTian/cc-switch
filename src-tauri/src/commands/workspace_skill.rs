@@ -107,17 +107,6 @@ pub fn remove_group_from_workspace(
 }
 
 #[tauri::command]
-pub fn get_workspace_group_ids(
-    workspace_id: String,
-    app_state: State<'_, AppState>,
-) -> Result<Vec<String>, String> {
-    app_state
-        .db
-        .get_workspace_group_ids(&workspace_id)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub async fn toggle_group_in_workspace(
     workspace_id: String,
     group_id: String,

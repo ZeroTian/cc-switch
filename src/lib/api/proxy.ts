@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  RouteSwitchResult,
   ProxyStatus,
   ProxyServerInfo,
   ProxyTakeoverStatus,
@@ -60,7 +61,10 @@ export const proxyApi = {
 
   // 指定路由目标（聚合模式下是默认那家）：直连时只记下来、下次进入路由 / 聚合模式时用它，
   // 已经在路由 / 聚合模式时当场生效
-  async setProxyRoute(appType: string, providerId: string): Promise<void> {
+  async setProxyRoute(
+    appType: string,
+    providerId: string,
+  ): Promise<RouteSwitchResult> {
     return invoke("set_proxy_route", { appType, providerId });
   },
 
@@ -78,11 +82,6 @@ export const proxyApi = {
   // Codex 先退回直连。返回退回直连的应用
   async exitProxyAppsInMode(stack: boolean): Promise<string[]> {
     return invoke("exit_proxy_apps_in_mode", { stack });
-  },
-
-  // 直连供应商：路由模式下退出路由时写回的那家（和路由到的那家互相独立）
-  async getDirectProvider(appType: string): Promise<string | null> {
-    return invoke("get_direct_provider", { appType });
   },
 
   // ========== Stack 模型 API ==========
@@ -114,6 +113,12 @@ export const proxyApi = {
     return invoke("restart_codex_app_server_daemon");
   },
 
+  // 关掉看不到进程时出的「Codex 可能还在用旧的」提示：后端记下现在的模型目录和登录，同一份
+  // 不再提示
+  async acknowledgeCodexStaleClients(): Promise<void> {
+    return invoke("acknowledge_codex_stale_clients");
+  },
+
   // ========== v3+ 全局/应用级配置 API ==========
 
   // 获取全局代理配置
@@ -124,6 +129,16 @@ export const proxyApi = {
   // 更新全局代理配置
   async updateGlobalProxyConfig(config: GlobalProxyConfig): Promise<void> {
     return invoke("update_global_proxy_config", { config });
+  },
+
+  // 获取客户端地址（写给客户端的代理主机，空表示按监听地址推）
+  async getProxyClientHost(): Promise<string> {
+    return invoke("get_proxy_client_host");
+  },
+
+  // 保存客户端地址，并按新地址重写接上路由的客户端
+  async setProxyClientHost(host: string): Promise<void> {
+    return invoke("set_proxy_client_host", { host });
   },
 
   // 获取指定应用的代理配置

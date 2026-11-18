@@ -41,9 +41,6 @@ export const workspacesApi = {
   removeGroup: (workspaceId: string, groupId: string): Promise<void> =>
     invoke("remove_group_from_workspace", { workspaceId, groupId }),
 
-  getGroupIds: (workspaceId: string): Promise<string[]> =>
-    invoke("get_workspace_group_ids", { workspaceId }),
-
   toggleGroupActive: (
     workspaceId: string,
     groupId: string,
