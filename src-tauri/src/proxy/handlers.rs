@@ -75,16 +75,9 @@ pub async fn get_status(State(state): State<ProxyState>) -> Result<Json<ProxySta
     Ok(Json(status))
 }
 
-/// GET /v1/models — Codex model list (reachability check)
-///
-/// Codex CLI probes this endpoint at startup and deserializes the response as a
-/// catalog with a top-level `models` field.  Return the cc-switch–managed model
-/// catalog file directly so the format always matches what the current version
-/// of Codex expects.
-///
-/// Only serves the catalog when the live config.toml still references the
-/// cc-switch–owned `model_catalog_json`, using the same path ownership rules as
-/// Codex live-setting import.
+/// GET /v1/models — Codex 完整模型目录。
+/// 未指定本地目录且当前路由为官方时，按请求身份及版本获取官方目录；
+/// CC Switch 管理的静态目录仍沿用原有路径归属规则。
 ///
 /// Claude Code 的模型发现（`CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY`）也打到这里：
 /// 按 [`is_claude_model_discovery`] 认出来，返回 Anthropic 形状的 Stack 模型列表。
@@ -97,12 +90,20 @@ pub async fn handle_models(
         return Ok(Json(claude_model_discovery(&state)));
     }
     let config_dir = crate::codex_config::get_codex_config_dir();
-    let active_catalog_path = match crate::codex_config::read_codex_config_text() {
-        Ok(config_text) => {
-            crate::codex_config::resolve_cc_switch_catalog_path(&config_text, &config_dir)
+    let config_text = crate::codex_config::read_codex_config_text()
+        .map_err(|error| ProxyError::ConfigError(error.to_string()))?;
+    let active_catalog_path =
+        crate::codex_config::resolve_cc_switch_catalog_path(&config_text, &config_dir);
+    // 使用实际代理路由，而非退出代理时才会写回的直连供应商指针。
+    if let Some(provider) = crate::mode::current::provider_in_use(&state.db, &AppType::Codex)
+        .map_err(|error| ProxyError::DatabaseError(error.to_string()))?
+    {
+        if super::codex_models::should_fetch_official_catalog(&config_text, &provider)? {
+            return super::codex_models::official_catalog(&state, &provider, &uri, &headers)
+                .await
+                .map(Json);
         }
-        Err(_) => None,
-    };
+    }
 
     let catalog = if let Some(catalog_path) =
         active_catalog_path.as_ref().filter(|path| path.exists())

@@ -206,6 +206,15 @@ pub fn get_current_proxy_url() -> Option<String> {
         .and_then(|url| url.clone())
 }
 
+/// 沿用全局网络设置，但不允许携带官方登录的目录请求跟随重定向。
+pub(super) fn get_without_redirects() -> Result<Client, String> {
+    let proxy_url = get_current_proxy_url();
+    build_client_builder(proxy_url.as_deref())?
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))
+}
+
 /// 检查是否正在使用代理
 #[allow(dead_code)]
 pub fn is_proxy_enabled() -> bool {
@@ -214,6 +223,12 @@ pub fn is_proxy_enabled() -> bool {
 
 /// 构建 HTTP 客户端
 fn build_client(proxy_url: Option<&str>) -> Result<Client, String> {
+    build_client_builder(proxy_url)?
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))
+}
+
+fn build_client_builder(proxy_url: Option<&str>) -> Result<reqwest::ClientBuilder, String> {
     let mut builder = Client::builder()
         .timeout(Duration::from_secs(600))
         .connect_timeout(Duration::from_secs(30))
@@ -258,9 +273,7 @@ fn build_client(proxy_url: Option<&str>) -> Result<Client, String> {
         }
     }
 
-    builder
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {e}"))
+    Ok(builder)
 }
 
 fn system_proxy_points_to_loopback() -> bool {
