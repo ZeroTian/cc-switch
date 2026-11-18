@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { AlertTriangle, Check } from "lucide-react";
 import { toast } from "@/lib/toast";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import type { AppId } from "@/lib/api/types";
+import type { SkillAppId } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { HelpTip } from "@/components/ui/help-tip";
 import { HoverTip } from "@/components/ui/hover-tip";
@@ -40,17 +40,17 @@ export function resolveBulkScope<T>(
  * 只有列头订阅当前列；单元格只拿稳定的 setter，悬停时整张表不会重渲染。
  */
 const MatrixColumnSetterContext = React.createContext<
-  (app: AppId, active: boolean) => void
+  (app: SkillAppId, active: boolean) => void
 >(() => {});
-const MatrixActiveColumnContext = React.createContext<AppId | null>(null);
+const MatrixActiveColumnContext = React.createContext<SkillAppId | null>(null);
 
 export function MatrixColumnHighlight({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [active, setActive] = React.useState<AppId | null>(null);
-  const setColumn = React.useCallback((app: AppId, on: boolean) => {
+  const [active, setActive] = React.useState<SkillAppId | null>(null);
+  const setColumn = React.useCallback((app: SkillAppId, on: boolean) => {
     setActive((prev) => (on ? app : prev === app ? null : prev));
   }, []);
   return (
@@ -71,7 +71,7 @@ function isKeyboardFocus(element: Element) {
   }
 }
 
-function useColumnTracking(app: AppId | undefined) {
+function useColumnTracking(app: SkillAppId | undefined) {
   const setColumn = React.useContext(MatrixColumnSetterContext);
   return React.useMemo(() => {
     if (!app) return {};
@@ -92,7 +92,7 @@ export type MatrixCellState = "on" | "off" | "fail";
 interface MatrixCellProps {
   state: MatrixCellState;
   /** 所在列：悬停 / 聚焦时高亮这一列的列头 */
-  app?: AppId;
+  app?: SkillAppId;
   /** 「serena · Codex：已启用」 */
   label: string;
   /** 不传操作时只读展示，供分组页显示适用范围。 */
@@ -172,7 +172,7 @@ export function MatrixCell({
 
 // ─── 列头 + 批量弹层 ─────────────────────────────────────────────────────
 interface MatrixColumnHeaderProps {
-  app: AppId;
+  app: SkillAppId;
   /** 列头上的数字：全部行里启用了几个 */
   enabledCount: number;
   totalCount: number;

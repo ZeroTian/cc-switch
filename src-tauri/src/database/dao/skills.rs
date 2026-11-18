@@ -23,7 +23,7 @@ impl Database {
             .prepare(
                 "SELECT id, name, description, directory, repo_owner, repo_name, repo_branch,
                         readme_url, enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild,
-                        enabled_opencode, enabled_hermes, installed_at, content_hash, updated_at, enabled_mcode
+                        enabled_opencode, enabled_hermes, installed_at, content_hash, updated_at, enabled_mcode, enabled_catpaw
                  FROM skills ORDER BY name ASC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -48,6 +48,7 @@ impl Database {
                         hermes: row.get(13)?,
                         pi: false,
                         mcode: row.get(17)?,
+                        catpaw: row.get(18)?,
                     },
                     installed_at: row.get(14)?,
                     content_hash: row.get(15)?,
@@ -71,7 +72,7 @@ impl Database {
             .prepare(
                 "SELECT id, name, description, directory, repo_owner, repo_name, repo_branch,
                         readme_url, enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild,
-                        enabled_opencode, enabled_hermes, installed_at, content_hash, updated_at, enabled_mcode
+                        enabled_opencode, enabled_hermes, installed_at, content_hash, updated_at, enabled_mcode, enabled_catpaw
                  FROM skills WHERE id = ?1",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -95,6 +96,7 @@ impl Database {
                     hermes: row.get(13)?,
                     pi: false,
                     mcode: row.get(17)?,
+                    catpaw: row.get(18)?,
                 },
                 installed_at: row.get(14)?,
                 content_hash: row.get(15)?,
@@ -116,8 +118,8 @@ impl Database {
             "INSERT INTO skills
              (id, name, description, directory, repo_owner, repo_name, repo_branch,
               readme_url, enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild, enabled_opencode, enabled_hermes,
-              installed_at, content_hash, updated_at, enabled_mcode)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+              installed_at, content_hash, updated_at, enabled_mcode, enabled_catpaw)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 description = excluded.description,
@@ -135,7 +137,8 @@ impl Database {
                 installed_at = excluded.installed_at,
                 content_hash = excluded.content_hash,
                 updated_at = excluded.updated_at,
-                enabled_mcode = excluded.enabled_mcode",
+                enabled_mcode = excluded.enabled_mcode,
+                enabled_catpaw = excluded.enabled_catpaw",
             params![
                 skill.id,
                 skill.name,
@@ -155,6 +158,7 @@ impl Database {
                 skill.content_hash,
                 skill.updated_at,
                 skill.apps.mcode,
+                skill.apps.catpaw,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -223,8 +227,8 @@ impl Database {
         let conn = lock_conn!(self.conn);
         let affected = conn
             .execute(
-                "UPDATE skills SET enabled_claude = ?1, enabled_codex = ?2, enabled_gemini = ?3, enabled_grokbuild = ?4, enabled_opencode = ?5, enabled_hermes = ?6, enabled_mcode = ?8 WHERE id = ?7",
-                params![apps.claude, apps.codex, apps.gemini, apps.grokbuild, apps.opencode, apps.hermes, id, apps.mcode],
+                "UPDATE skills SET enabled_claude = ?1, enabled_codex = ?2, enabled_gemini = ?3, enabled_grokbuild = ?4, enabled_opencode = ?5, enabled_hermes = ?6, enabled_mcode = ?8, enabled_catpaw = ?9 WHERE id = ?7",
+                params![apps.claude, apps.codex, apps.gemini, apps.grokbuild, apps.opencode, apps.hermes, id, apps.mcode, apps.catpaw],
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(affected > 0)
@@ -329,7 +333,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app_config::AppType;
+    use crate::app_config::SkillApp;
 
     fn skill(id: &str, name: &str, apps: SkillApps) -> InstalledSkill {
         InstalledSkill {
@@ -351,11 +355,11 @@ mod tests {
     #[test]
     fn update_skill_metadata_preserves_enabled_apps() {
         let db = Database::memory().expect("memory db");
-        let installed_apps = SkillApps::only(&AppType::Codex);
+        let installed_apps = SkillApps::only(&SkillApp::Codex);
         let original = skill("owner/repo:skill", "original", installed_apps.clone());
         db.save_skill(&original).expect("seed skill");
 
-        let mut candidate = skill(&original.id, "updated", SkillApps::only(&AppType::Claude));
+        let mut candidate = skill(&original.id, "updated", SkillApps::only(&SkillApp::Claude));
         candidate.repo_branch = Some("next".to_string());
         candidate.updated_at = 42;
 
@@ -383,7 +387,7 @@ mod tests {
         let candidate = skill(
             "owner/repo:missing",
             "missing",
-            SkillApps::only(&AppType::Claude),
+            SkillApps::only(&SkillApp::Claude),
         );
 
         assert!(!db
@@ -401,13 +405,13 @@ mod tests {
         let stale_update = skill(
             "owner/repo:skill",
             "stale-update",
-            SkillApps::only(&AppType::Claude),
+            SkillApps::only(&SkillApp::Claude),
         );
 
         let mut reinstalled = skill(
             &stale_update.id,
             "reinstalled",
-            SkillApps::only(&AppType::Gemini),
+            SkillApps::only(&SkillApp::Gemini),
         );
         reinstalled.installed_at = stale_update.installed_at + 1;
         db.save_skill(&reinstalled).expect("seed reinstalled skill");

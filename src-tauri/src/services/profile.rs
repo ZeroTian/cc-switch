@@ -221,10 +221,11 @@ impl ProfileService {
                 );
             }
             if let Some(slot) = payload.skills.get_mut(app) {
+                let skill_app = crate::app_config::SkillApp::from(app);
                 *slot = Some(
                     skills
                         .values()
-                        .filter(|s| s.apps.is_enabled_for(app))
+                        .filter(|s| s.apps.is_enabled_for(&skill_app))
                         .map(|s| s.id.clone())
                         .collect(),
                 );
@@ -412,10 +413,11 @@ impl ProfileService {
 
             // 3. Skills diff（SkillService 返回 anyhow::Result，收进 warning）
             if let Some(Some(target_ids)) = payload.skills.get(app) {
+                let skill_app = crate::app_config::SkillApp::from(app);
                 let skills = state.db.get_all_installed_skills()?;
                 let current: Vec<(String, bool)> = skills
                     .values()
-                    .map(|s| (s.id.clone(), s.apps.is_enabled_for(app)))
+                    .map(|s| (s.id.clone(), s.apps.is_enabled_for(&skill_app)))
                     .collect();
                 let (toggles, dangling) = plan_toggles(&current, target_ids);
                 for id in dangling {
@@ -424,7 +426,7 @@ impl ProfileService {
                     ));
                 }
                 for (id, enabled) in toggles {
-                    if let Err(e) = SkillService::toggle_app(&state.db, &id, app, enabled) {
+                    if let Err(e) = SkillService::toggle_app(&state.db, &id, &skill_app, enabled) {
                         warnings.push(format!(
                             "[{app_str}] toggle skill '{id}' -> {enabled} failed: {e}"
                         ));

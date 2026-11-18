@@ -83,6 +83,29 @@ describe("SkillGroupEditDialog 已选 Skill 排序", () => {
     );
   });
 
+  it("保存 CatPaw Desk 作为分组的适用应用", async () => {
+    const onSave = vi.fn();
+    renderWithQueryClient(
+      <SkillGroupEditDialog
+        open
+        group={group}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "CatPaw Desk" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onSave).toHaveBeenCalledWith({
+      name: "分组一",
+      description: "分组描述",
+      apps: { ...DEFAULT_GROUP_APPS, catpaw: true },
+    });
+  });
+
   it("编辑时已选项置顶，两类内部保持原顺序且不修改查询数组", async () => {
     renderWithQueryClient(
       <SkillGroupEditDialog

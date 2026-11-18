@@ -17,7 +17,7 @@ import {
   useAddSkillToGroup,
   useRemoveSkillFromGroup,
 } from "@/hooks/useSkillGroups";
-import type { AppId } from "@/lib/api/types";
+import type { SkillAppId } from "@/lib/api/types";
 import type { SkillGroup, SkillGroupApps } from "@/lib/api/skills";
 import { DEFAULT_GROUP_APPS } from "@/lib/api/skillGroups";
 
@@ -93,7 +93,7 @@ export function SkillGroupEditDialog({
     }
   };
 
-  const handleToggleApp = (app: AppId, enabled: boolean) => {
+  const handleToggleApp = (app: SkillAppId, enabled: boolean) => {
     setApps((prev) => ({ ...prev, [app]: enabled }));
   };
 

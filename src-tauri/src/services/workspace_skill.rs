@@ -1,6 +1,6 @@
 //! WorkspaceSkill 业务逻辑层
 
-use crate::app_config::AppType;
+use crate::app_config::SkillApp;
 use crate::database::dao::skill_groups::SkillGroupApps;
 use crate::database::Database;
 use crate::services::skill::{SkillService, SkillSyncFailure, SyncMethod};
@@ -112,13 +112,14 @@ impl WorkspaceSkillService {
         Ok(skill_ids)
     }
 
-    fn group_enabled_for(apps: &SkillGroupApps, app: &AppType) -> bool {
+    fn group_enabled_for(apps: &SkillGroupApps, app: &SkillApp) -> bool {
         match app {
-            AppType::Claude => apps.claude,
-            AppType::Codex => apps.codex,
-            AppType::Gemini => apps.gemini,
-            AppType::OpenCode => apps.opencode,
-            AppType::Hermes => apps.hermes,
+            SkillApp::Claude => apps.claude,
+            SkillApp::Codex => apps.codex,
+            SkillApp::Gemini => apps.gemini,
+            SkillApp::OpenCode => apps.opencode,
+            SkillApp::Hermes => apps.hermes,
+            SkillApp::CatPaw => apps.catpaw,
             _ => false,
         }
     }
@@ -127,7 +128,7 @@ impl WorkspaceSkillService {
         db: &Arc<Database>,
         group_ids: &[String],
         direct_ids: Vec<String>,
-        app: &AppType,
+        app: &SkillApp,
     ) -> Result<HashSet<String>> {
         let mut skill_ids: HashSet<String> = direct_ids.into_iter().collect();
         for group_id in group_ids {
@@ -142,7 +143,7 @@ impl WorkspaceSkillService {
 
     pub(crate) fn collect_global_skill_ids_for_app(
         db: &Arc<Database>,
-        app: &AppType,
+        app: &SkillApp,
     ) -> Result<HashSet<String>> {
         Self::collect_skill_ids_for_app(
             db,
@@ -155,11 +156,12 @@ impl WorkspaceSkillService {
     /// 按全局选择集刷新各应用目录，保留每个 Skill 自身的 app 开关。
     pub fn sync_global(db: &Arc<Database>) -> Result<()> {
         for app in [
-            AppType::Claude,
-            AppType::Codex,
-            AppType::Gemini,
-            AppType::OpenCode,
-            AppType::Hermes,
+            SkillApp::Claude,
+            SkillApp::Codex,
+            SkillApp::Gemini,
+            SkillApp::OpenCode,
+            SkillApp::Hermes,
+            SkillApp::CatPaw,
         ] {
             SkillService::sync_global_to_app(db, &app, None)?;
         }
@@ -199,7 +201,11 @@ impl WorkspaceSkillService {
             .map_err(|e| anyhow!("{e}"))?;
         let ssot_dir = SkillService::get_ssot_dir()?;
         let roots = Self::workspace_roots(db, &ws.path)?;
-        for (app, app_directory) in [(AppType::Claude, ".claude"), (AppType::Codex, ".agents")] {
+        for (app, app_directory) in [
+            (SkillApp::Claude, ".claude"),
+            (SkillApp::Codex, ".agents"),
+            (SkillApp::CatPaw, ".catpaw"),
+        ] {
             let skill_ids =
                 Self::collect_skill_ids_for_app(db, &active_group_ids, direct_ids.clone(), &app)?;
             for root in &roots {
@@ -247,7 +253,7 @@ impl WorkspaceSkillService {
     pub(crate) fn sync_skills_to_directory(
         db: &Arc<Database>,
         skill_ids: &HashSet<String>,
-        app: &AppType,
+        app: &SkillApp,
         target_skills_dir: &Path,
         ssot_dir: &Path,
         previous_ssot: Option<&Path>,
@@ -817,7 +823,7 @@ impl WorkspaceSkillService {
     /// - symlink → 检查 read_link 目标是否仍在 SSOT 目录内
     /// - 目录   → 检查 `.cc-switch-managed` 标记文件是否存在
     /// - 其他   → false（断链等异常情况不再视为管理条目）
-    fn is_still_managed(entry_path: &Path, ssot_dir: &Path) -> bool {
+    pub(crate) fn is_still_managed(entry_path: &Path, ssot_dir: &Path) -> bool {
         if entry_path.is_symlink() {
             SkillService::is_symlink_to_ssot(entry_path, ssot_dir)
         } else if entry_path.is_dir() {
@@ -986,7 +992,7 @@ mod tests {
                 WorkspaceSkillService::sync_skills_to_directory(
                     &self.db,
                     &selected.iter().map(|id| (*id).to_string()).collect(),
-                    &AppType::Codex,
+                    &SkillApp::Codex,
                     &self.target,
                     &self.source,
                     previous_ssot,

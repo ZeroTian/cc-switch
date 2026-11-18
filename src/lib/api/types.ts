@@ -10,3 +10,6 @@ export type AppId =
   | "hermes"
   | "pi"
   | "mcode";
+
+/** 技能目标也包含仅接入技能管理的桌面应用。 */
+export type SkillAppId = AppId | "catpaw";

@@ -26,7 +26,7 @@ import {
   useSearchSkillsSh,
   useSkillRepos,
 } from "@/hooks/useSkills";
-import type { AppId } from "@/lib/api/types";
+import type { SkillAppId } from "@/lib/api/types";
 import type {
   DiscoverableSkill,
   InstalledSkill,
@@ -50,11 +50,11 @@ const ROW_HEIGHT = 56;
 export type SkillsPageSource = "repos" | "skillssh";
 
 type InstallRunner = <T extends { id: string }>(
-  install: (firstApp: AppId) => Promise<T[]>,
-  apps?: AppId[],
+  install: (firstApp: SkillAppId) => Promise<T[]>,
+  apps?: SkillAppId[],
 ) => Promise<{
   installed: T[];
-  failures: Array<{ id: string; app: AppId; error: unknown }>;
+  failures: Array<{ id: string; app: SkillAppId; error: unknown }>;
 }>;
 
 const SKILLSSH_PAGE_SIZE = 20;
@@ -110,16 +110,16 @@ interface SkillsPageProps {
    * 传入的内容放在页签行右侧（安装到、搜索）。
    */
   renderViewTabs: (trailing: React.ReactNode) => React.ReactNode;
-  visibleAppIds: AppId[];
-  installTargets: AppId[];
-  onInstallTargetsChange: (apps: AppId[]) => void;
+  visibleAppIds: SkillAppId[];
+  installTargets: SkillAppId[];
+  onInstallTargetsChange: (apps: SkillAppId[]) => void;
   installTo: InstallRunner;
   /** 「已安装 · 3 个应用 ›」：切到已安装段并定位到那一行 */
   onShowInstalled: (skillId: string) => void;
   onOpenRepoManager: () => void;
   /** 安装后有应用没能启用：交给已安装段标 ⚠ */
   onEnableFailures: (
-    failures: Array<{ id: string; app: AppId; error: unknown }>,
+    failures: Array<{ id: string; app: SkillAppId; error: unknown }>,
   ) => void;
   initialQuery?: string;
 }
@@ -349,7 +349,7 @@ export function SkillsPage({
   });
 
   // ─── 安装 ───────────────────────────────────────────────────────────
-  const names = (apps: AppId[]) =>
+  const names = (apps: SkillAppId[]) =>
     apps.map((app) => APP_DISPLAY_NAME[app]).join(t("mcpPage.listSeparator"));
 
   const handleInstall = async (row: DiscoverRow) => {
@@ -847,9 +847,9 @@ function InstallToPopover({
 }: {
   label: string;
   fullLabel: string;
-  visibleAppIds: AppId[];
-  targets: AppId[];
-  onChange: (apps: AppId[]) => void;
+  visibleAppIds: SkillAppId[];
+  targets: SkillAppId[];
+  onChange: (apps: SkillAppId[]) => void;
 }) {
   const { t } = useTranslation();
   const apps = SKILLS_APP_IDS.filter((app) => visibleAppIds.includes(app));

@@ -4,7 +4,7 @@
 //! - 支持三应用开关（Claude/Codex/Gemini）
 //! - SSOT 存储在 ~/.cc-switch/skills/
 
-use crate::app_config::{AppType, InstalledSkill, UnmanagedSkill};
+use crate::app_config::{InstalledSkill, SkillApp, UnmanagedSkill};
 use crate::error::format_skill_error;
 use crate::services::skill::{
     DiscoverableSkill, ImportSkillSelection, MigrationResult, Skill, SkillAppSyncOutcome,
@@ -20,9 +20,9 @@ use tauri_plugin_opener::OpenerExt;
 /// SkillService 状态包装
 pub struct SkillServiceState(pub Arc<SkillService>);
 
-/// 解析 app 参数为 AppType
-fn parse_app_type(app: &str) -> Result<AppType, String> {
-    AppType::from_str(app).map_err(|e| e.to_string())
+/// 解析 app 参数为 SkillApp
+fn parse_app_type(app: &str) -> Result<SkillApp, String> {
+    SkillApp::from_str(app).map_err(|e| e.to_string())
 }
 
 // ========== 统一管理命令 ==========

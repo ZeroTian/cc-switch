@@ -101,6 +101,107 @@ impl McpApps {
     }
 }
 
+/// 仅用于技能管理的应用标识，独立于供应商、代理和 MCP 的 AppType。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SkillApp {
+    Claude,
+    #[serde(
+        rename = "claude-desktop",
+        alias = "claude_desktop",
+        alias = "claudeDesktop"
+    )]
+    ClaudeDesktop,
+    Codex,
+    Gemini,
+    GrokBuild,
+    OpenCode,
+    OpenClaw,
+    Hermes,
+    Pi,
+    Mcode,
+    CatPaw,
+}
+
+impl SkillApp {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Claude => "claude",
+            Self::ClaudeDesktop => "claude-desktop",
+            Self::Codex => "codex",
+            Self::Gemini => "gemini",
+            Self::GrokBuild => "grokbuild",
+            Self::OpenCode => "opencode",
+            Self::OpenClaw => "openclaw",
+            Self::Hermes => "hermes",
+            Self::Pi => "pi",
+            Self::Mcode => "mcode",
+            Self::CatPaw => "catpaw",
+        }
+    }
+
+    pub fn all() -> impl Iterator<Item = Self> {
+        [
+            Self::Claude,
+            Self::ClaudeDesktop,
+            Self::Codex,
+            Self::Gemini,
+            Self::GrokBuild,
+            Self::OpenCode,
+            Self::OpenClaw,
+            Self::Hermes,
+            Self::Pi,
+            Self::Mcode,
+            Self::CatPaw,
+        ]
+        .into_iter()
+    }
+}
+
+impl From<AppType> for SkillApp {
+    fn from(app: AppType) -> Self {
+        match app {
+            AppType::Claude => Self::Claude,
+            AppType::ClaudeDesktop => Self::ClaudeDesktop,
+            AppType::Codex => Self::Codex,
+            AppType::Gemini => Self::Gemini,
+            AppType::GrokBuild => Self::GrokBuild,
+            AppType::OpenCode => Self::OpenCode,
+            AppType::OpenClaw => Self::OpenClaw,
+            AppType::Hermes => Self::Hermes,
+            AppType::Pi => Self::Pi,
+            AppType::Mcode => Self::Mcode,
+        }
+    }
+}
+
+impl From<&AppType> for SkillApp {
+    fn from(app: &AppType) -> Self {
+        app.clone().into()
+    }
+}
+
+impl FromStr for SkillApp {
+    type Err = AppError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value.trim().eq_ignore_ascii_case("catpaw") {
+            return Ok(Self::CatPaw);
+        }
+        AppType::from_str(value).map(Self::from).map_err(|_| {
+            let allowed = Self::all()
+                .map(|app| app.as_str().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            AppError::localized(
+                "unsupported_skill_app",
+                format!("不支持的技能应用标识: '{value}'。可选值: {allowed}。"),
+                format!("Unsupported skill app id: '{value}'. Allowed: {allowed}."),
+            )
+        })
+    }
+}
+
 /// Skill 应用启用状态（标记 Skill 应用到哪些客户端）
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct SkillApps {
@@ -120,67 +221,74 @@ pub struct SkillApps {
     pub hermes: bool,
     #[serde(default)]
     pub pi: bool,
+    #[serde(default)]
+    pub catpaw: bool,
 }
 
 impl SkillApps {
     /// 检查指定应用是否启用
-    pub fn is_enabled_for(&self, app: &AppType) -> bool {
+    pub fn is_enabled_for(&self, app: &SkillApp) -> bool {
         match app {
-            AppType::Claude => self.claude,
-            AppType::Codex => self.codex,
-            AppType::Gemini => self.gemini,
-            AppType::GrokBuild => self.grokbuild,
-            AppType::OpenCode => self.opencode,
-            AppType::Hermes => self.hermes,
-            AppType::Pi => self.pi,
-            AppType::Mcode => self.mcode,
-            AppType::OpenClaw => false, // OpenClaw doesn't support Skills
-            AppType::ClaudeDesktop => false,
+            SkillApp::CatPaw => self.catpaw,
+            SkillApp::Claude => self.claude,
+            SkillApp::Codex => self.codex,
+            SkillApp::Gemini => self.gemini,
+            SkillApp::GrokBuild => self.grokbuild,
+            SkillApp::OpenCode => self.opencode,
+            SkillApp::Hermes => self.hermes,
+            SkillApp::Pi => self.pi,
+            SkillApp::Mcode => self.mcode,
+            SkillApp::OpenClaw => false, // OpenClaw doesn't support Skills
+            SkillApp::ClaudeDesktop => false,
         }
     }
 
     /// 设置指定应用的启用状态
-    pub fn set_enabled_for(&mut self, app: &AppType, enabled: bool) {
+    pub fn set_enabled_for(&mut self, app: &SkillApp, enabled: bool) {
         match app {
-            AppType::Claude => self.claude = enabled,
-            AppType::Codex => self.codex = enabled,
-            AppType::Gemini => self.gemini = enabled,
-            AppType::GrokBuild => self.grokbuild = enabled,
-            AppType::OpenCode => self.opencode = enabled,
-            AppType::Hermes => self.hermes = enabled,
-            AppType::Pi => self.pi = enabled,
-            AppType::Mcode => self.mcode = enabled,
-            AppType::OpenClaw => {} // OpenClaw doesn't support Skills, ignore
-            AppType::ClaudeDesktop => {} // Claude Desktop 3P profiles don't use CC Switch skill sync
+            SkillApp::CatPaw => self.catpaw = enabled,
+            SkillApp::Claude => self.claude = enabled,
+            SkillApp::Codex => self.codex = enabled,
+            SkillApp::Gemini => self.gemini = enabled,
+            SkillApp::GrokBuild => self.grokbuild = enabled,
+            SkillApp::OpenCode => self.opencode = enabled,
+            SkillApp::Hermes => self.hermes = enabled,
+            SkillApp::Pi => self.pi = enabled,
+            SkillApp::Mcode => self.mcode = enabled,
+            SkillApp::OpenClaw => {} // OpenClaw doesn't support Skills, ignore
+            SkillApp::ClaudeDesktop => {} // Claude Desktop 3P profiles don't use CC Switch skill sync
         }
     }
 
     /// 获取所有启用的应用列表
-    pub fn enabled_apps(&self) -> Vec<AppType> {
+    pub fn enabled_apps(&self) -> Vec<SkillApp> {
         let mut apps = Vec::new();
         if self.claude {
-            apps.push(AppType::Claude);
+            apps.push(SkillApp::Claude);
         }
         if self.codex {
-            apps.push(AppType::Codex);
+            apps.push(SkillApp::Codex);
         }
         if self.gemini {
-            apps.push(AppType::Gemini);
+            apps.push(SkillApp::Gemini);
         }
         if self.grokbuild {
-            apps.push(AppType::GrokBuild);
+            apps.push(SkillApp::GrokBuild);
         }
         if self.opencode {
-            apps.push(AppType::OpenCode);
+            apps.push(SkillApp::OpenCode);
         }
         if self.mcode {
-            apps.push(AppType::Mcode);
+            apps.push(SkillApp::Mcode);
         }
         if self.hermes {
-            apps.push(AppType::Hermes);
+            apps.push(SkillApp::Hermes);
         }
         if self.pi {
-            apps.push(AppType::Pi);
+            apps.push(SkillApp::Pi);
+        }
+        if self.catpaw {
+            apps.push(SkillApp::CatPaw);
         }
         apps
     }
@@ -195,10 +303,11 @@ impl SkillApps {
             && !self.hermes
             && !self.mcode
             && !self.pi
+            && !self.catpaw
     }
 
     /// 仅启用指定应用（其他应用设为禁用）
-    pub fn only(app: &AppType) -> Self {
+    pub fn only(app: &SkillApp) -> Self {
         let mut apps = Self::default();
         apps.set_enabled_for(app, true);
         apps
@@ -206,12 +315,12 @@ impl SkillApps {
 
     /// 从来源标签列表构建启用状态
     ///
-    /// 标签与 AppType::as_str() 一致时启用对应应用，
+    /// 标签与 SkillApp::as_str() 一致时启用对应应用，
     /// 其他标签（如 "agents", "cc-switch"）忽略。
     pub fn from_labels(labels: &[String]) -> Self {
         let mut apps = Self::default();
         for label in labels {
-            if let Ok(app) = label.parse::<AppType>() {
+            if let Ok(app) = label.parse::<SkillApp>() {
                 apps.set_enabled_for(&app, true);
             }
         }
@@ -1029,6 +1138,32 @@ mod tests {
     use std::env;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn catpaw_is_a_skill_target_without_expanding_provider_apps() {
+        assert!("catpaw".parse::<AppType>().is_err());
+        let app = " CatPaw ".parse::<SkillApp>().unwrap();
+        let apps = SkillApps::only(&app);
+        assert_eq!(apps.enabled_apps(), vec![SkillApp::CatPaw]);
+        assert!(!apps.is_empty());
+        assert!(serde_json::to_value(&apps).unwrap()["catpaw"]
+            .as_bool()
+            .unwrap());
+        let legacy: SkillApps =
+            serde_json::from_value(serde_json::json!({"claude": true})).unwrap();
+        assert!(!legacy.catpaw);
+        assert_eq!(
+            SkillApps::from_labels(&["catpaw".into(), "agents".into()]),
+            apps
+        );
+        for app in AppType::all() {
+            assert_eq!(SkillApp::from(&app).as_str(), app.as_str());
+            assert_eq!(
+                app.as_str().parse::<SkillApp>().unwrap(),
+                SkillApp::from(app)
+            );
+        }
+    }
 
     #[test]
     fn app_type_parses_claude_desktop_aliases() {

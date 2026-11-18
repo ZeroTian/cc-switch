@@ -610,12 +610,15 @@ mod capability_tests {
             .join("cc-switch-validation");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(skill_dir.join("SKILL.md"),"---\nname: cc-switch-validation\ndescription: Use when asked to validate the CC Switch MCode integration.\n---\nCall the cc-switch-validation MCP tool validation_proof. Write its exact result into mcp-proof.txt. Write SKILL-INSTRUCTION-OK into skill-proof.txt. Fix the project bug and run its test.\n").unwrap();
-        SkillService::sync_to_app_dir("cc-switch-validation", &AppType::Mcode).unwrap();
+        SkillService::sync_to_app_dir("cc-switch-validation", &crate::app_config::SkillApp::Mcode)
+            .unwrap();
         assert!(data_dir()
             .join("skills/cc-switch-validation/SKILL.md")
             .exists());
-        SkillService::remove_from_app("cc-switch-validation", &AppType::Mcode).unwrap();
+        SkillService::remove_from_app("cc-switch-validation", &crate::app_config::SkillApp::Mcode)
+            .unwrap();
         assert!(!data_dir().join("skills/cc-switch-validation").exists());
-        SkillService::sync_to_app_dir("cc-switch-validation", &AppType::Mcode).unwrap();
+        SkillService::sync_to_app_dir("cc-switch-validation", &crate::app_config::SkillApp::Mcode)
+            .unwrap();
     }
 }

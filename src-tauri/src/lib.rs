@@ -44,7 +44,9 @@ mod tray;
 mod usage_events;
 mod usage_script;
 
-pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
+pub use app_config::{
+    AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApp, SkillApps,
+};
 pub use codex_config::{
     extract_codex_experimental_bearer_token, get_codex_auth_path, get_codex_config_path,
     read_codex_live_settings, write_codex_live_atomic,

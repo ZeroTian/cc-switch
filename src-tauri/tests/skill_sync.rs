@@ -1,7 +1,7 @@
 use std::fs;
 
 use cc_switch_lib::{
-    migrate_skills_to_ssot, AppType, ImportSkillSelection, InstalledSkill, SkillApps, SkillService,
+    migrate_skills_to_ssot, ImportSkillSelection, InstalledSkill, SkillApp, SkillApps, SkillService,
 };
 
 #[path = "support.rs"]
@@ -155,7 +155,7 @@ fn sync_to_app_removes_disabled_and_orphaned_ssot_symlinks() {
         })
         .expect("save disabled skill");
 
-    SkillService::sync_to_app(&state.db, &AppType::OpenCode).expect("reconcile skills");
+    SkillService::sync_to_app(&state.db, &SkillApp::OpenCode).expect("reconcile skills");
 
     assert!(
         !opencode_skills_dir.join("disabled-skill").exists(),
@@ -279,7 +279,7 @@ fn restore_skill_backup_restores_files_to_ssot_and_current_app() {
     .to_string_lossy()
     .to_string();
 
-    let restored = SkillService::restore_from_backup(&state.db, &backup_id, &AppType::Claude)
+    let restored = SkillService::restore_from_backup(&state.db, &backup_id, &SkillApp::Claude)
         .expect("restore from backup");
 
     assert_eq!(restored.directory, "restore-skill");

@@ -1,5 +1,5 @@
 import React from "react";
-import type { AppId } from "@/lib/api/types";
+import type { AppId, SkillAppId } from "@/lib/api/types";
 import type { VisibleApps } from "@/types";
 import {
   ClaudeIcon,
@@ -43,7 +43,7 @@ export const DEFAULT_VISIBLE_APPS: VisibleApps = {
 };
 
 /** App IDs shown in Skills panels. */
-export const SKILLS_APP_IDS: AppId[] = [
+export const SKILLS_APP_IDS: SkillAppId[] = [
   "claude",
   "codex",
   "gemini",
@@ -52,6 +52,7 @@ export const SKILLS_APP_IDS: AppId[] = [
   "hermes",
   "pi",
   "mcode",
+  "catpaw",
 ];
 
 export type ProxyAppId = Extract<

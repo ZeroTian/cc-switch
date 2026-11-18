@@ -49,7 +49,7 @@ import {
   useUninstallSkill,
   useUpdateSkill,
 } from "@/hooks/useSkills";
-import type { AppId } from "@/lib/api/types";
+import type { SkillAppId } from "@/lib/api/types";
 import { SKILLS_APP_IDS } from "@/config/appConfig";
 import { settingsApi, skillsApi } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
@@ -81,13 +81,13 @@ import type { ZipSkippedSkill } from "@/lib/api/skills";
 const BACKUP_DIR = "~/.cc-switch/skill-backups";
 
 type SkillsView = "installed" | "discover" | "groups" | "workspaces";
-type StatusFilter = "all" | "updates" | "none" | `app:${AppId}`;
+type StatusFilter = "all" | "updates" | "none" | `app:${SkillAppId}`;
 
 interface WriteFailure {
   desired: boolean;
   error: string;
 }
-const failKey = (id: string, app: AppId) => `${id}\u0000${app}`;
+const failKey = (id: string, app: SkillAppId) => `${id}\u0000${app}`;
 
 type ConfirmState =
   | { kind: "uninstall"; ids: string[] }
@@ -255,7 +255,7 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
   };
 
   const listSeparator = t("mcpPage.listSeparator");
-  const names = (apps: AppId[]) =>
+  const names = (apps: SkillAppId[]) =>
     apps.map((app) => APP_DISPLAY_NAME[app]).join(listSeparator);
   const noun = t("skillsPage.noun");
   const installedSkills = skills ?? [];
@@ -330,7 +330,7 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
       if (statusFilter === "updates" && !updatesMap[skill.id]) return false;
       if (statusFilter === "none" && enabledCount(skill) > 0) return false;
       if (statusFilter.startsWith("app:")) {
-        const app = statusFilter.slice(4) as AppId;
+        const app = statusFilter.slice(4) as SkillAppId;
         if (!skill.apps[app]) return false;
       }
       if (sourceFilter !== "all" && sourceKey(skill) !== sourceFilter) {
@@ -411,7 +411,7 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
   // ─── 写入与失败记录 ────────────────────────────────────────────────
   const recordResult = (
     id: string,
-    app: AppId,
+    app: SkillAppId,
     desired: boolean,
     error?: unknown,
   ) =>
@@ -424,14 +424,14 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
     });
 
   const recordEnableFailures = (
-    failures: Array<{ id: string; app: AppId; error: unknown }>,
+    failures: Array<{ id: string; app: SkillAppId; error: unknown }>,
   ) => {
     for (const failure of failures) {
       recordResult(failure.id, failure.app, true, failure.error);
     }
   };
 
-  const writeOne = async (id: string, app: AppId, enabled: boolean) => {
+  const writeOne = async (id: string, app: SkillAppId, enabled: boolean) => {
     if (!beginWrite()) return;
     try {
       await toggleAppMutation.mutateAsync({ id, app, enabled });
@@ -443,7 +443,11 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
     }
   };
 
-  const writeMany = async (ids: string[], app: AppId, enabled: boolean) => {
+  const writeMany = async (
+    ids: string[],
+    app: SkillAppId,
+    enabled: boolean,
+  ) => {
     if (ids.length === 0) return { succeeded: [] as string[], failed: 0 };
     try {
       const result = await bulkToggleAppMutation.mutateAsync({
@@ -464,7 +468,7 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
 
   const bulkToggle = async (
     ids: string[],
-    app: AppId,
+    app: SkillAppId,
     enabled: boolean,
     toastKey: { on: string; off: string },
   ) => {
@@ -501,7 +505,7 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
     }
   };
 
-  const handleColumnBulk = (app: AppId, enabled: boolean) => {
+  const handleColumnBulk = (app: SkillAppId, enabled: boolean) => {
     const ids = scope.rows
       .filter((skill) => Boolean(skill.apps[app]) !== enabled)
       .map((skill) => skill.id);
@@ -512,7 +516,7 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
     });
   };
 
-  const handleSelectionToggle = (app: AppId, enabled: boolean) => {
+  const handleSelectionToggle = (app: SkillAppId, enabled: boolean) => {
     const chosen = installedSkills.filter((skill) => selected.has(skill.id));
     const ids = chosen
       .filter((skill) => Boolean(skill.apps[app]) !== enabled)
@@ -707,7 +711,7 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
   };
 
   const reportEnableFailures = (
-    failures: Array<{ id: string; app: AppId; error: unknown }>,
+    failures: Array<{ id: string; app: SkillAppId; error: unknown }>,
   ) => {
     if (failures.length === 0) return;
     recordEnableFailures(failures);
@@ -1078,7 +1082,7 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
     if (value === "none") return t("skillsPage.filter.none");
     if (value.startsWith("app:"))
       return t("skillsPage.filter.inApp", {
-        app: APP_DISPLAY_NAME[value.slice(4) as AppId],
+        app: APP_DISPLAY_NAME[value.slice(4) as SkillAppId],
       });
     return t("skillsPage.filter.all");
   };
@@ -1815,7 +1819,7 @@ interface InstalledRowProps {
   skill: InstalledSkill;
   groupNames: string[];
   first: boolean;
-  appIds: AppId[];
+  appIds: SkillAppId[];
   checked: boolean;
   hasUpdate: boolean;
   isUpdating: boolean;
@@ -1824,7 +1828,7 @@ interface InstalledRowProps {
   disabled: boolean;
   sourceText: string;
   onPick: (checked: boolean) => void;
-  onCell: (app: AppId) => void;
+  onCell: (app: SkillAppId) => void;
   onOpenSource: () => void;
   onFixSync: () => void;
   onUpdate: () => void;
@@ -2105,9 +2109,9 @@ function AppMenuButton({
 }: {
   label: string;
   ariaLabel: string;
-  apps: AppId[];
+  apps: SkillAppId[];
   disabled: boolean;
-  onPick: (app: AppId) => void;
+  onPick: (app: SkillAppId) => void;
 }) {
   return (
     <DropdownMenu>

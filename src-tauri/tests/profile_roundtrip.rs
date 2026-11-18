@@ -8,7 +8,7 @@ use serde_json::json;
 
 use cc_switch_lib::{
     AppType, InstalledSkill, McpServer, McpService, ProfilePayload, ProfileScope, ProfileService,
-    Prompt, PromptService, Provider, ProviderService, SkillApps, SkillService,
+    Prompt, PromptService, Provider, ProviderService, SkillApp, SkillApps, SkillService,
 };
 
 #[path = "support.rs"]
@@ -203,7 +203,7 @@ fn profile_snapshot_apply_roundtrip_restores_configuration() {
     ProviderService::switch(&state, AppType::ClaudeDesktop, "d2").expect("switch desktop to d2");
     McpService::toggle_app(&state, "m1", AppType::Claude, false).expect("disable m1");
     McpService::toggle_app(&state, "m2", AppType::Claude, true).expect("enable m2");
-    SkillService::toggle_app(&state.db, "local:test-skill", &AppType::Claude, false)
+    SkillService::toggle_app(&state.db, "local:test-skill", &SkillApp::Claude, false)
         .expect("disable skill");
     PromptService::enable_prompt(&state, AppType::Claude, "pr2").expect("enable pr2");
 

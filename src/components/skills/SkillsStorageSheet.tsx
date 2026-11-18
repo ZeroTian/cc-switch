@@ -18,7 +18,7 @@ import {
 import { APP_DISPLAY_NAME } from "@/components/shell/AppGlyph";
 import { shortenHomePath } from "@/components/sessions/utils";
 import { skillsApi, type SkillAppSyncOutcome } from "@/lib/api/skills";
-import type { AppId } from "@/lib/api/types";
+import type { SkillAppId } from "@/lib/api/types";
 import type { SkillStorageLocation, SkillSyncMethod } from "@/types";
 import { extractErrorMessage } from "@/utils/errorUtils";
 
@@ -27,7 +27,7 @@ interface SkillsStorageSheetProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const appName = (app: string) => APP_DISPLAY_NAME[app as AppId] ?? app;
+const appName = (app: string) => APP_DISPLAY_NAME[app as SkillAppId] ?? app;
 
 const DEFAULT_CC_SWITCH_DIR = "~/.cc-switch/skills";
 const UNIFIED_DIR = "~/.agents/skills";

@@ -7,6 +7,7 @@ export const DEFAULT_GROUP_APPS: SkillGroupApps = {
   gemini: false,
   opencode: false,
   hermes: false,
+  catpaw: false,
 };
 
 export const skillGroupsApi = {

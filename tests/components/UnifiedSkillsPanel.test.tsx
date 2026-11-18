@@ -241,6 +241,25 @@ describe("UnifiedSkillsPanel", () => {
     expect(columns()).toHaveLength(2);
   });
 
+  it("enables a Skill for CatPaw Desk from its matrix column", async () => {
+    m.visibleApps = ["claude", "catpaw"];
+    m.installed = [makeSkill()];
+    renderPanel();
+
+    expect(columns()).toHaveLength(2);
+    const cells = screen.getAllByRole("button", { name: /appMatrix.cell/ });
+    expect(cells[1]).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(cells[1]);
+
+    await waitFor(() =>
+      expect(m.toggle).toHaveBeenCalledWith({
+        id: "owner/repo:alpha-skill",
+        app: "catpaw",
+        enabled: true,
+      }),
+    );
+  });
+
   it("distinguishes an empty list from a search miss", async () => {
     renderPanel();
     expect(screen.getByText("skillsPage.emptyTitle")).toBeInTheDocument();
@@ -744,6 +763,7 @@ describe("UnifiedSkillsPanel", () => {
           hermes: false,
           pi: false,
           mcode: false,
+          catpaw: false,
         },
       },
     ]);

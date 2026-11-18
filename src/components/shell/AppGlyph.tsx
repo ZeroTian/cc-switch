@@ -1,10 +1,10 @@
-import { Monitor, Terminal } from "lucide-react";
-import type { AppId } from "@/lib/api";
+import { Monitor, PawPrint, Terminal } from "lucide-react";
+import type { SkillAppId } from "@/lib/api/types";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { cn } from "@/lib/utils";
 
 /** 应用名：品牌名不翻译，四种语言都写原文。 */
-export const APP_DISPLAY_NAME: Record<AppId, string> = {
+export const APP_DISPLAY_NAME: Record<SkillAppId, string> = {
   claude: "Claude Code",
   "claude-desktop": "Claude Desktop",
   codex: "Codex",
@@ -15,9 +15,10 @@ export const APP_DISPLAY_NAME: Record<AppId, string> = {
   hermes: "Hermes",
   pi: "Pi",
   mcode: "MiniMax Code",
+  catpaw: "CatPaw Desk",
 };
 
-const APP_ICON_NAME: Record<AppId, string> = {
+const APP_ICON_NAME: Partial<Record<SkillAppId, string>> = {
   claude: "claude",
   "claude-desktop": "claude",
   codex: "openai",
@@ -31,13 +32,13 @@ const APP_ICON_NAME: Record<AppId, string> = {
 };
 
 // Claude Code 和 Claude Desktop 用同一个图标，靠右下角的小角标区分终端与桌面
-const APP_BADGE_ICON: Partial<Record<AppId, typeof Terminal>> = {
+const APP_BADGE_ICON: Partial<Record<SkillAppId, typeof Terminal>> = {
   claude: Terminal,
   "claude-desktop": Monitor,
 };
 
 interface AppGlyphProps {
-  app: AppId;
+  app: SkillAppId;
   /** 图标边长：侧栏 16，页头 20 */
   size?: number;
   /** 角标底色要和所在的行一致，否则看起来像缺了一块 */
@@ -62,12 +63,16 @@ export function AppGlyph({
       )}
       style={{ width: size + 2, height: size + 2 }}
     >
-      <ProviderIcon
-        icon={APP_ICON_NAME[app]}
-        name=""
-        size={size}
-        showFallback={false}
-      />
+      {app === "catpaw" ? (
+        <PawPrint size={size} />
+      ) : (
+        <ProviderIcon
+          icon={APP_ICON_NAME[app]}
+          name=""
+          size={size}
+          showFallback={false}
+        />
+      )}
       {BadgeIcon && (
         <span
           className={cn(

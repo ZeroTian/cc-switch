@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { HelpTip } from "@/components/ui/help-tip";
 import { DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { AppGlyph, APP_DISPLAY_NAME } from "@/components/shell/AppGlyph";
-import type { AppId } from "@/lib/api/types";
+import type { SkillAppId } from "@/lib/api/types";
 import type { ImportSkillSelection, UnmanagedSkill } from "@/lib/api/skills";
 import { SKILLS_APP_IDS } from "@/config/appConfig";
 import { cn } from "@/lib/utils";
@@ -16,13 +16,13 @@ const IMPORT_APP_IDS = SKILLS_APP_IDS.filter((app) => app !== "pi");
 
 interface SkillImportDialogProps {
   skills: UnmanagedSkill[];
-  visibleAppIds: AppId[];
+  visibleAppIds: SkillAppId[];
   isImporting: boolean;
   onImport: (imports: ImportSkillSelection[]) => void;
   onClose: () => void;
 }
 
-const isAppId = (value: string): value is AppId =>
+const isAppId = (value: string): value is SkillAppId =>
   (SKILLS_APP_IDS as string[]).includes(value);
 
 /** 「导入本机已有…」（宽 560）：选目录 + 选导入后在哪些应用启用。 */
@@ -43,7 +43,7 @@ export function SkillImportDialog({
   );
   // 默认勾「发现于」里出现过的应用
   const defaultApps = useMemo(() => {
-    const set = new Set<AppId>();
+    const set = new Set<SkillAppId>();
     for (const skill of skills) {
       for (const found of skill.foundIn) {
         if (isAppId(found) && found !== "pi") set.add(found);
@@ -51,7 +51,7 @@ export function SkillImportDialog({
     }
     return set;
   }, [skills]);
-  const [apps, setApps] = useState<Set<AppId>>(() => new Set(defaultApps));
+  const [apps, setApps] = useState<Set<SkillAppId>>(() => new Set(defaultApps));
 
   const foundLabel = (found: string) => {
     if (isAppId(found)) return APP_DISPLAY_NAME[found];
@@ -84,7 +84,7 @@ export function SkillImportDialog({
       skills
         .filter((skill) => selected.has(skill.directory))
         .map((skill) => {
-          const chosen = new Set<AppId>(extra);
+          const chosen = new Set<SkillAppId>(extra);
           for (const found of skill.foundIn) {
             if (isAppId(found) && apps.has(found)) chosen.add(found);
           }
@@ -100,6 +100,7 @@ export function SkillImportDialog({
               hermes: chosen.has("hermes"),
               pi: false,
               mcode: chosen.has("mcode"),
+              catpaw: chosen.has("catpaw"),
             },
           };
         }),

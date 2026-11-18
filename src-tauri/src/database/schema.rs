@@ -100,6 +100,7 @@ impl Database {
             enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
             enabled_mcode BOOLEAN NOT NULL DEFAULT 0,
             enabled_hermes BOOLEAN NOT NULL DEFAULT 0,
+            enabled_catpaw BOOLEAN NOT NULL DEFAULT 0,
             installed_at INTEGER NOT NULL DEFAULT 0,
             content_hash TEXT,
             updated_at INTEGER NOT NULL DEFAULT 0
@@ -448,7 +449,8 @@ impl Database {
                 enabled_codex BOOLEAN NOT NULL DEFAULT 0,
                 enabled_gemini BOOLEAN NOT NULL DEFAULT 0,
                 enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
-                enabled_hermes BOOLEAN NOT NULL DEFAULT 0
+                enabled_hermes BOOLEAN NOT NULL DEFAULT 0,
+                enabled_catpaw BOOLEAN NOT NULL DEFAULT 0
             )",
             [],
         )
@@ -703,6 +705,20 @@ impl Database {
                             )?;
                         }
                         Self::set_user_version(conn, 23)?;
+                    }
+                    23 => {
+                        log::info!("迁移数据库从 v23 到 v24（Skills 添加 CatPaw 支持）");
+                        for table in ["skills", "skill_groups"] {
+                            if Self::table_exists(conn, table)? {
+                                Self::add_column_if_missing(
+                                    conn,
+                                    table,
+                                    "enabled_catpaw",
+                                    "BOOLEAN NOT NULL DEFAULT 0",
+                                )?;
+                            }
+                        }
+                        Self::set_user_version(conn, 24)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -4134,6 +4150,46 @@ mod tests {
         )?;
         assert_eq!(codex_values, (1, 9));
 
+        Ok(())
+    }
+
+    #[test]
+    fn catpaw_migrate_v23_keeps_existing_skills_groups_and_bindings() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE skills (id TEXT PRIMARY KEY, enabled_codex BOOLEAN NOT NULL DEFAULT 0);
+             CREATE TABLE skill_groups (id TEXT PRIMARY KEY, enabled_claude BOOLEAN NOT NULL DEFAULT 1);
+             CREATE TABLE workspace_group_active (workspace_id TEXT, group_id TEXT);
+             INSERT INTO skills VALUES ('skill', 1);
+             INSERT INTO skill_groups VALUES ('group', 1);
+             INSERT INTO workspace_group_active VALUES ('project', 'group');",
+        )?;
+        Database::set_user_version(&conn, 23)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert!(Database::has_column(&conn, "skills", "enabled_catpaw")?);
+        assert!(Database::has_column(
+            &conn,
+            "skill_groups",
+            "enabled_catpaw"
+        )?);
+        let flags: (bool, bool, bool, bool) = conn.query_row(
+            "SELECT skills.enabled_codex, skills.enabled_catpaw,
+                    skill_groups.enabled_claude, skill_groups.enabled_catpaw
+             FROM skills, skill_groups",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        assert_eq!(flags, (true, false, true, false));
+        assert_eq!(Database::get_user_version(&conn)?, 24);
+        let binding: (String, String) = conn.query_row(
+            "SELECT workspace_id, group_id FROM workspace_group_active",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(binding, ("project".into(), "group".into()));
+        assert!(!Database::table_exists(&conn, "mcp_servers")?);
         Ok(())
     }
 

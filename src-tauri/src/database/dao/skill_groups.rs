@@ -13,6 +13,8 @@ pub struct SkillGroupApps {
     pub gemini: bool,
     pub opencode: bool,
     pub hermes: bool,
+    #[serde(default)]
+    pub catpaw: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +51,7 @@ impl Database {
                 gemini: row.get(10)?,
                 opencode: row.get(11)?,
                 hermes: row.get(12)?,
+                catpaw: row.get(13)?,
             },
             member_ids: vec![],
         })
@@ -59,7 +62,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, name, description, icon, is_active, sort_index, created_at, updated_at,
-                        enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes
+                        enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes, enabled_catpaw
                  FROM skill_groups ORDER BY COALESCE(sort_index, 9999), name ASC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -94,7 +97,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, name, description, icon, is_active, sort_index, created_at, updated_at,
-                        enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes
+                        enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes, enabled_catpaw
                  FROM skill_groups WHERE id = ?1",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -109,12 +112,12 @@ impl Database {
         let conn = lock_conn!(self.conn);
         conn.execute(
             "INSERT INTO skill_groups (id, name, description, icon, is_active, sort_index, created_at, updated_at,
-                                       enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                                       enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes, enabled_catpaw)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 group.id, group.name, group.description, group.icon,
                 group.is_active, group.sort_index, group.created_at, group.updated_at,
-                group.apps.claude, group.apps.codex, group.apps.gemini, group.apps.opencode, group.apps.hermes,
+                group.apps.claude, group.apps.codex, group.apps.gemini, group.apps.opencode, group.apps.hermes, group.apps.catpaw,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -126,11 +129,11 @@ impl Database {
         conn.execute(
             "UPDATE skill_groups SET name=?1, description=?2, icon=?3, sort_index=?4, updated_at=?5,
                                      enabled_claude=?6, enabled_codex=?7, enabled_gemini=?8,
-                                     enabled_opencode=?9, enabled_hermes=?10
-             WHERE id=?11",
+                                     enabled_opencode=?9, enabled_hermes=?10, enabled_catpaw=?11
+             WHERE id=?12",
             params![
                 group.name, group.description, group.icon, group.sort_index, group.updated_at,
-                group.apps.claude, group.apps.codex, group.apps.gemini, group.apps.opencode, group.apps.hermes,
+                group.apps.claude, group.apps.codex, group.apps.gemini, group.apps.opencode, group.apps.hermes, group.apps.catpaw,
                 group.id,
             ],
         )
